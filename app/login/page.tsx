@@ -124,13 +124,35 @@ export default function LoginPage() {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error);
 
-                // Switch to OTP verification screen
                 setOtpExpiry(data.expiresAt);
                 setMode('verify-otp');
                 setInfo('Check your email for the verification code.');
             } else {
-                await signInWithEmail(email, password);
-                // routing is handled by the useEffect watching session/tenantId
+                // Sign in directly — then immediately resolve the profile ourselves.
+                // Don't rely on useEffect/onAuthStateChange which can deadlock.
+                const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+                if (signInError) throw signInError;
+                if (!signInData.session) throw new Error('No session returned');
+
+                // Fetch profile directly using the access token we just got
+                const profileRes = await fetch('/api/auth/profile', {
+                    headers: { Authorization: `Bearer ${signInData.session.access_token}` },
+                });
+
+                if (profileRes.ok) {
+                    const { profile } = await profileRes.json();
+                    if (profile?.role === 'super_admin') {
+                        router.replace('/super-admin');
+                        return;
+                    }
+                    if (profile?.role && profile?.tenant_id) {
+                        router.replace(`/${profile.tenant_id}/dashboard/orders`);
+                        return;
+                    }
+                }
+
+                // Profile missing or no role → unauthorized
+                router.replace('/unauthorized');
             }
         } catch (err: any) {
             const msg = err?.message ?? 'Authentication failed';
