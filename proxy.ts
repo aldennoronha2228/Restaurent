@@ -151,7 +151,7 @@ function extractSessionFromCookies(request: NextRequest): string | null {
 
 // ─── Main middleware ───────────────────────────────────────────────────────────
 
-export function proxy(request: NextRequest) {
+export default function proxy(request: NextRequest) {
     const { pathname, searchParams } = request.nextUrl;
 
     // ── Path traversal rejection ───────────────────────────────────────────────
