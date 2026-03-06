@@ -59,7 +59,7 @@ function PasswordStrength({ password }: { password: string }) {
 type FormMode = 'signin' | 'signup' | 'verify-otp';
 
 export default function LoginPage() {
-    const { session, isAdmin, loading, userRole, tenantLoading, tenantId } = useAuth();
+    const { session, loading, userRole, tenantLoading, tenantId } = useAuth();
     const router = useRouter();
     const [mode, setMode] = useState<FormMode>('signin');
     const [email, setEmail] = useState('');
@@ -92,11 +92,17 @@ export default function LoginPage() {
 
     useEffect(() => {
         if (!loading && !tenantLoading && session) {
-            if (userRole === 'super_admin') { router.replace('/super-admin'); }
-            else if (isAdmin && tenantId) { router.replace(`/${tenantId}/dashboard/orders`); }
-            else { router.replace('/unauthorized'); }
+            if (userRole === 'super_admin') {
+                router.replace('/super-admin');
+            } else if (userRole && tenantId) {
+                // Any role (owner, admin, staff) with a tenantId can access the dashboard
+                router.replace(`/${tenantId}/dashboard/orders`);
+            } else if (!tenantLoading && !userRole) {
+                // Fully loaded but no role at all → truly unauthorized
+                router.replace('/unauthorized');
+            }
         }
-    }, [session, isAdmin, loading, tenantLoading, userRole, tenantId, router]);
+    }, [session, loading, tenantLoading, userRole, tenantId, router]);
 
     const handleEmailAuth = async (e: React.FormEvent) => {
         e.preventDefault();
