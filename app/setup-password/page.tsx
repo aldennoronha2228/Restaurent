@@ -17,14 +17,14 @@ function PasswordStrength({ password }: { password: string }) {
     const score = checks.filter(c => c.pass).length;
     const colors = ['bg-rose-500', 'bg-orange-500', 'bg-amber-500', 'bg-emerald-500'];
     const labels = ['Weak', 'Fair', 'Good', 'Strong'];
-    
+
     return (
         <div className="mt-2 space-y-2">
             <div className="flex gap-1">
                 {[0, 1, 2, 3].map(i => (
-                    <div 
-                        key={i} 
-                        className={`flex-1 h-1 rounded-full transition-all duration-300 ${i < score ? colors[score - 1] : 'bg-slate-700'}`} 
+                    <div
+                        key={i}
+                        className={`flex-1 h-1 rounded-full transition-all duration-300 ${i < score ? colors[score - 1] : 'bg-slate-700'}`}
                     />
                 ))}
             </div>
@@ -55,29 +55,29 @@ function Background() {
                 { cx: '80%', cy: '70%', r: 250, color: '#4f46e5', delay: 2 },
                 { cx: '50%', cy: '90%', r: 200, color: '#0f766e', delay: 4 },
             ].map((orb, i) => (
-                <motion.div 
-                    key={i} 
-                    animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.25, 0.15] }} 
-                    transition={{ duration: 8, delay: orb.delay, repeat: Infinity, ease: 'easeInOut' }} 
-                    style={{ 
-                        position: 'absolute', 
-                        left: orb.cx, 
-                        top: orb.cy, 
-                        width: orb.r * 2, 
-                        height: orb.r * 2, 
-                        transform: 'translate(-50%, -50%)', 
-                        borderRadius: '50%', 
-                        background: `radial-gradient(circle, ${orb.color}55 0%, transparent 70%)`, 
-                        filter: 'blur(40px)' 
-                    }} 
+                <motion.div
+                    key={i}
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.25, 0.15] }}
+                    transition={{ duration: 8, delay: orb.delay, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{
+                        position: 'absolute',
+                        left: orb.cx,
+                        top: orb.cy,
+                        width: orb.r * 2,
+                        height: orb.r * 2,
+                        transform: 'translate(-50%, -50%)',
+                        borderRadius: '50%',
+                        background: `radial-gradient(circle, ${orb.color}55 0%, transparent 70%)`,
+                        filter: 'blur(40px)'
+                    }}
                 />
             ))}
-            <div 
-                className="absolute inset-0 opacity-[0.03]" 
-                style={{ 
-                    backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', 
-                    backgroundSize: '50px 50px' 
-                }} 
+            <div
+                className="absolute inset-0 opacity-[0.03]"
+                style={{
+                    backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+                    backgroundSize: '50px 50px'
+                }}
             />
         </div>
     );
@@ -86,7 +86,7 @@ function Background() {
 function SetupPasswordContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    
+
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -105,13 +105,13 @@ function SetupPasswordContent() {
                 setUserRole(session.user.user_metadata?.role ?? null);
             }
         };
-        
+
         // Handle the hash fragment from Supabase invite email
         const hashParams = new URLSearchParams(window.location.hash.slice(1));
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
         const type = hashParams.get('type');
-        
+
         if (type === 'invite' && accessToken && refreshToken) {
             supabase.auth.setSession({
                 access_token: accessToken,
@@ -164,10 +164,10 @@ function SetupPasswordContent() {
 
             setSuccess(true);
             toast.success('Password set successfully!');
-            
-            // Redirect to dashboard after a short delay
+
+            // Redirect to login after a short delay to trigger proper tenant resolution
             setTimeout(() => {
-                router.push('/dashboard/orders');
+                router.push('/login');
             }, 2000);
         } catch (err: any) {
             setError(err.message || 'Failed to set password. Please try again.');
@@ -181,8 +181,8 @@ function SetupPasswordContent() {
             <div className="min-h-screen flex items-center justify-center relative">
                 <Background />
                 <div className="relative z-10 w-full max-w-md px-4">
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.9 }} 
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         className="bg-slate-900/80 backdrop-blur-2xl border border-slate-700/50 rounded-3xl shadow-2xl overflow-hidden"
                     >
@@ -215,9 +215,9 @@ function SetupPasswordContent() {
         <div className="min-h-screen flex items-center justify-center relative">
             <Background />
             <div className="relative z-10 w-full max-w-md px-4">
-                <motion.div 
-                    initial={{ opacity: 0, y: 32, scale: 0.96 }} 
-                    animate={{ opacity: 1, y: 0, scale: 1 }} 
+                <motion.div
+                    initial={{ opacity: 0, y: 32, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 >
                     <div className="bg-slate-900/80 backdrop-blur-2xl border border-slate-700/50 rounded-3xl shadow-2xl overflow-hidden">
@@ -235,11 +235,10 @@ function SetupPasswordContent() {
                                     </p>
                                 )}
                                 {userRole && (
-                                    <span className={`mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
-                                        userRole === 'owner' ? 'bg-purple-500/20 text-purple-300' :
-                                        userRole === 'manager' ? 'bg-blue-500/20 text-blue-300' :
-                                        'bg-slate-500/20 text-slate-300'
-                                    }`}>
+                                    <span className={`mt-2 px-3 py-1 rounded-full text-xs font-semibold ${userRole === 'owner' ? 'bg-purple-500/20 text-purple-300' :
+                                            userRole === 'manager' ? 'bg-blue-500/20 text-blue-300' :
+                                                'bg-slate-500/20 text-slate-300'
+                                        }`}>
                                         {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
                                     </span>
                                 )}
@@ -247,8 +246,8 @@ function SetupPasswordContent() {
 
                             {/* Error Message */}
                             {error && (
-                                <motion.div 
-                                    initial={{ opacity: 0, y: -10 }} 
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm"
                                 >
@@ -296,13 +295,12 @@ function SetupPasswordContent() {
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
                                             placeholder="Confirm your password"
-                                            className={`w-full pl-11 pr-4 py-3 bg-slate-800/50 border rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all ${
-                                                confirmPassword && password !== confirmPassword 
-                                                    ? 'border-rose-500/50' 
-                                                    : confirmPassword && password === confirmPassword 
-                                                        ? 'border-emerald-500/50' 
+                                            className={`w-full pl-11 pr-4 py-3 bg-slate-800/50 border rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all ${confirmPassword && password !== confirmPassword
+                                                    ? 'border-rose-500/50'
+                                                    : confirmPassword && password === confirmPassword
+                                                        ? 'border-emerald-500/50'
                                                         : 'border-slate-700/50'
-                                            }`}
+                                                }`}
                                             required
                                         />
                                     </div>

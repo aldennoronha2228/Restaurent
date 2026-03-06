@@ -8,6 +8,7 @@ import { getTables, menuItems, type Table } from '@/data/sharedData';
 import { fetchActiveOrders, updateOrderStatus, deleteOrder } from '@/lib/api';
 import type { DashboardOrder } from '@/lib/types';
 import { useAuth } from '@/context/AuthContext';
+import { useRestaurant } from '@/hooks/useRestaurant';
 
 const statusConfig = {
     new: { label: 'New Order', color: 'bg-blue-500', ring: 'ring-blue-500/20', text: 'text-blue-700', bg: 'bg-blue-50' },
@@ -36,7 +37,7 @@ export default function LiveOrdersPage() {
 
     useEffect(() => { setFloorTables(getTables()); }, []);
 
-    const { tenantId, tenantLoading, subscriptionTier } = useAuth();
+    const { storeId: tenantId, loading: tenantLoading, subscriptionTier } = useRestaurant();
 
     // Check if user has Pro tier - Pro gets Floor Overview, Starter does not
     const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
@@ -319,9 +320,9 @@ export default function LiveOrdersPage() {
                     </motion.div>
                 ) : (
                     /* Starter Tier - Show Upgrade Prompt */
-                    <motion.div 
-                        initial={{ opacity: 0 }} 
-                        animate={{ opacity: 1 }} 
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
                         className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 border border-slate-700 shadow-lg lg:hidden"
                     >
                         <div className="flex items-center gap-3 mb-4">

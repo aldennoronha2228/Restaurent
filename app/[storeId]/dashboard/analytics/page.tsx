@@ -7,12 +7,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-    BarChart3, TrendingUp, TrendingDown, DollarSign, 
+import {
+    BarChart3, TrendingUp, TrendingDown, DollarSign,
     ShoppingBag, Users, Clock, Calendar, ArrowUpRight,
     FileText, Download, Loader2, ChevronRight, Lock, Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useRestaurant } from '@/hooks/useRestaurant';
 import { ProFeatureGate } from '@/components/dashboard/ProFeatureGate';
 import { RoleGuard } from '@/components/dashboard/RoleGuard';
 import { cn } from '@/lib/utils';
@@ -46,7 +47,7 @@ const statCards = [
 
 // Reports Section Component
 function ReportsSection() {
-    const { tenantId, tenantName, subscriptionTier } = useAuth();
+    const { storeId: tenantId, tenantName, subscriptionTier } = useRestaurant();
     const [reports, setReports] = useState<DailyReport[]>([]);
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
@@ -56,14 +57,14 @@ function ReportsSection() {
 
     const fetchReports = useCallback(async () => {
         if (!tenantId) return;
-        
+
         setLoading(true);
         try {
             const token = localStorage.getItem('supabase_access_token');
             const res = await fetch(`/api/reports?restaurantId=${tenantId}&limit=7`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            
+
             const data = await res.json();
             if (data.upgrade) {
                 setError('upgrade');
@@ -86,21 +87,21 @@ function ReportsSection() {
 
     const generateTodayReport = async () => {
         if (!tenantId) return;
-        
+
         setGenerating(true);
         try {
             const token = localStorage.getItem('supabase_access_token');
             const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-            
+
             const res = await fetch('/api/reports', {
                 method: 'POST',
-                headers: { 
+                headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ restaurantId: tenantId, date: yesterday })
             });
-            
+
             const data = await res.json();
             if (data.report) {
                 setReports(prev => [data.report, ...prev.filter(r => r.report_date !== data.report.report_date)]);
@@ -118,13 +119,13 @@ function ReportsSection() {
 
     const handleDownloadWeekly = () => {
         if (reports.length === 0) return;
-        
-        const sortedReports = [...reports].sort((a, b) => 
+
+        const sortedReports = [...reports].sort((a, b) =>
             new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
         );
         const weekStart = sortedReports[0]?.report_date || '';
         const weekEnd = sortedReports[sortedReports.length - 1]?.report_date || '';
-        
+
         const doc = generateWeeklySummaryPDF(reports, tenantName || 'Restaurant', weekStart, weekEnd);
         doc.save(`${(tenantName || 'Restaurant').replace(/\s+/g, '_')}_Weekly_Report.pdf`);
     };
@@ -144,7 +145,7 @@ function ReportsSection() {
                     <div className="flex-1">
                         <h3 className="text-xl font-bold text-white mb-2">Daily Reports</h3>
                         <p className="text-slate-300 mb-4">
-                            Automated Daily Reports are a Pro feature. Upgrade to get sales insights 
+                            Automated Daily Reports are a Pro feature. Upgrade to get sales insights
                             delivered to your inbox with professional PDF summaries.
                         </p>
                         <div className="flex flex-wrap items-center gap-3">
@@ -228,12 +229,12 @@ function ReportsSection() {
                 <div className="space-y-2">
                     {reports.map((report, i) => {
                         const date = new Date(report.report_date);
-                        const formattedDate = date.toLocaleDateString('en-IN', { 
-                            weekday: 'short', 
-                            month: 'short', 
-                            day: 'numeric' 
+                        const formattedDate = date.toLocaleDateString('en-IN', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric'
                         });
-                        
+
                         return (
                             <motion.div
                                 key={report.id}
@@ -317,8 +318,8 @@ function AnalyticsContent() {
                             </div>
                             <span className={cn(
                                 "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
-                                stat.isPositive 
-                                    ? "bg-green-50 text-green-600" 
+                                stat.isPositive
+                                    ? "bg-green-50 text-green-600"
                                     : "bg-red-50 text-red-600"
                             )}>
                                 {stat.isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
@@ -350,7 +351,7 @@ function AnalyticsContent() {
                         </span>
                     </div>
                 </div>
-                
+
                 <div className="h-64 flex items-end gap-3">
                     {revenueData.map((data, i) => (
                         <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
@@ -413,8 +414,8 @@ function AnalyticsContent() {
 export default function AnalyticsPage() {
     return (
         <RoleGuard requiredPermission="can_view_analytics">
-            <ProFeatureGate 
-                feature="Analytics Dashboard" 
+            <ProFeatureGate
+                feature="Analytics Dashboard"
                 description="Get detailed insights into your restaurant's performance with revenue tracking, order analytics, and customer behavior data."
             >
                 <AnalyticsContent />

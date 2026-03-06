@@ -27,9 +27,10 @@ async function getRedirectPath(accessToken: string): Promise<string> {
         if (res.ok) {
             const { profile } = await res.json();
             if (profile?.role === 'super_admin') return '/super-admin';
+            if (profile?.tenant_id) return `/${profile.tenant_id}/dashboard/orders`;
         }
-    } catch {}
-    return '/dashboard/orders';
+    } catch { }
+    return '/unauthorized';
 }
 
 function AuthCallbackContent() {

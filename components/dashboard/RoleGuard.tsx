@@ -96,7 +96,7 @@ export const ROLE_PERMISSIONS = {
 export type RoleType = keyof typeof ROLE_PERMISSIONS;
 export type PermissionType = keyof typeof ROLE_PERMISSIONS.owner;
 
-// Map routes to required permissions
+// Map base routes to required permissions
 export const ROUTE_PERMISSIONS: Record<string, PermissionType> = {
     '/dashboard/orders': 'can_view_orders',
     '/dashboard/history': 'can_view_history',
@@ -123,7 +123,7 @@ export function getAllowedRoutes(role: string | null): string[] {
     const roleKey = role as RoleType;
     const permissions = ROLE_PERMISSIONS[roleKey];
     if (!permissions) return [];
-    
+
     return Object.entries(ROUTE_PERMISSIONS)
         .filter(([_, permission]) => permissions[permission])
         .map(([route]) => route);
@@ -136,29 +136,32 @@ interface RoleGuardProps {
     showToast?: boolean;
 }
 
-export function RoleGuard({ 
-    children, 
+export function RoleGuard({
+    children,
     requiredPermission = 'can_view_orders',
     fallbackRoute = '/dashboard/orders',
-    showToast = true 
+    showToast = true
 }: RoleGuardProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const { userRole, loading } = useAuth();
-    
+    const { userRole, loading, tenantId } = useAuth();
+
     const hasAccess = hasPermission(userRole, requiredPermission);
-    
+
+    // Resolve dynamic fallback route
+    const resolvedFallback = tenantId ? `/${tenantId}${fallbackRoute}` : fallbackRoute;
+
     useEffect(() => {
         if (loading) return;
-        
+
         if (!hasAccess) {
             if (showToast) {
                 toast.error('Access Denied: You do not have permission to view this page.');
             }
-            router.replace(fallbackRoute);
+            router.replace(resolvedFallback);
         }
-    }, [hasAccess, loading, router, fallbackRoute, showToast]);
-    
+    }, [hasAccess, loading, router, resolvedFallback, showToast]);
+
     // Show nothing while checking permissions
     if (loading) {
         return (
@@ -167,12 +170,12 @@ export function RoleGuard({
             </div>
         );
     }
-    
+
     // If no access, don't render children (redirect will happen)
     if (!hasAccess) {
         return null;
     }
-    
+
     return <>{children}</>;
 }
 

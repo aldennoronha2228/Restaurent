@@ -59,7 +59,7 @@ function PasswordStrength({ password }: { password: string }) {
 type FormMode = 'signin' | 'signup' | 'verify-otp';
 
 export default function LoginPage() {
-    const { session, isAdmin, loading, userRole, tenantLoading } = useAuth();
+    const { session, isAdmin, loading, userRole, tenantLoading, tenantId } = useAuth();
     const router = useRouter();
     const [mode, setMode] = useState<FormMode>('signin');
     const [email, setEmail] = useState('');
@@ -72,7 +72,7 @@ export default function LoginPage() {
     const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [info, setInfo] = useState<string | null>(null);
-    
+
     // OTP verification state
     const [generatedOtp, setGeneratedOtp] = useState('');
     const [enteredOtp, setEnteredOtp] = useState('');
@@ -94,10 +94,10 @@ export default function LoginPage() {
     useEffect(() => {
         if (!loading && !tenantLoading && session) {
             if (userRole === 'super_admin') { router.replace('/super-admin'); }
-            else if (isAdmin) { router.replace('/dashboard/orders'); }
+            else if (isAdmin && tenantId) { router.replace(`/${tenantId}/dashboard/orders`); }
             else { router.replace('/unauthorized'); }
         }
-    }, [session, isAdmin, loading, tenantLoading, userRole, router]);
+    }, [session, isAdmin, loading, tenantLoading, userRole, tenantId, router]);
 
     const handleEmailAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -109,7 +109,7 @@ export default function LoginPage() {
                 if (!fullName) { setError('Please enter your full name.'); setFormLoading(false); return; }
                 if (!restaurantName) { setError('Please enter your restaurant name.'); setFormLoading(false); return; }
                 if (!masterPin || masterPin.length < 4) { setError('Please set a Master PIN (at least 4 characters).'); setFormLoading(false); return; }
-                
+
                 // Step 1: Send OTP to email
                 const res = await fetch('/api/auth/signup-init', {
                     method: 'POST',
@@ -118,14 +118,14 @@ export default function LoginPage() {
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error);
-                
+
                 // Switch to OTP verification screen
                 setOtpExpiry(data.expiresAt);
                 setMode('verify-otp');
                 setInfo('Check your email for the verification code.');
             } else {
                 await signInWithEmail(email, password);
-                router.replace('/dashboard/orders');
+                // routing is handled by the useEffect watching session/tenantId
             }
         } catch (err: any) {
             const msg = err?.message ?? 'Authentication failed';
@@ -139,9 +139,9 @@ export default function LoginPage() {
 
     const handleVerifyOtp = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!enteredOtp || enteredOtp.length !== 6) { 
-            setError('Please enter the 6-digit verification code.'); 
-            return; 
+        if (!enteredOtp || enteredOtp.length !== 6) {
+            setError('Please enter the 6-digit verification code.');
+            return;
         }
         setFormLoading(true); setError(null);
         try {
@@ -152,7 +152,7 @@ export default function LoginPage() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
-            
+
             setInfo('Account created successfully! You can now sign in.');
             setMode('signin');
             setGeneratedOtp('');
@@ -228,30 +228,30 @@ export default function LoginPage() {
                                         </div>
                                         <p className="text-[10px] text-slate-500">Code expires in 10 minutes</p>
                                     </div>
-                                    
+
                                     <form onSubmit={handleVerifyOtp} className="space-y-4">
                                         <div>
                                             <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Enter Verification Code</label>
-                                            <input 
-                                                type="text" 
-                                                value={enteredOtp} 
-                                                onChange={e => setEnteredOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} 
-                                                placeholder="000000" 
+                                            <input
+                                                type="text"
+                                                value={enteredOtp}
+                                                onChange={e => setEnteredOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                placeholder="000000"
                                                 maxLength={6}
-                                                className="w-full h-14 px-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white text-center text-2xl font-mono tracking-[0.3em] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/40 transition-all" 
+                                                className="w-full h-14 px-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white text-center text-2xl font-mono tracking-[0.3em] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/40 transition-all"
                                             />
                                         </div>
-                                        <motion.button 
-                                            type="submit" 
-                                            disabled={formLoading || enteredOtp.length !== 6} 
-                                            whileHover={{ scale: formLoading ? 1 : 1.02 }} 
-                                            whileTap={{ scale: formLoading ? 1 : 0.98 }} 
+                                        <motion.button
+                                            type="submit"
+                                            disabled={formLoading || enteredOtp.length !== 6}
+                                            whileHover={{ scale: formLoading ? 1 : 1.02 }}
+                                            whileTap={{ scale: formLoading ? 1 : 0.98 }}
                                             className="w-full h-12 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                                         >
                                             {formLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Verifying...</> : 'Verify & Create Account →'}
                                         </motion.button>
-                                        <button 
-                                            type="button" 
+                                        <button
+                                            type="button"
                                             onClick={() => { setMode('signup'); setEnteredOtp(''); setError(null); }}
                                             className="w-full h-10 text-slate-400 hover:text-white text-sm transition-colors"
                                         >

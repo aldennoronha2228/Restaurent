@@ -30,8 +30,8 @@ import { type NextRequest, NextResponse } from 'next/server';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-// Paths that require an authenticated session (exact prefix match)
-const PROTECTED_PREFIXES = ['/dashboard', '/super-admin'];
+// Paths that require an authenticated session
+const PROTECTED_PREFIXES = ['/super-admin'];
 
 // Paths that are always public
 const PUBLIC_PATHS = ['/login', '/auth', '/customer', '/unauthorized', '/_next', '/favicon.ico', '/public'];
@@ -164,7 +164,9 @@ export default function proxy(request: NextRequest) {
     const securityHeaders = buildSecurityHeaders(nonce);
 
     // ── Route protection ───────────────────────────────────────────────────────
-    const isProtected = PROTECTED_PREFIXES.some(p => pathname.startsWith(p));
+    // Protect /super-admin AND match any `/[storeId]/dashboard` paths dynamically
+    const isDashboard = pathname.match(/^\/[^/]+\/dashboard(\/.*)?$/);
+    const isProtected = isDashboard || PROTECTED_PREFIXES.some(p => pathname.startsWith(p));
 
     if (isProtected) {
         // Check for a session cookie. Full token verification requires the

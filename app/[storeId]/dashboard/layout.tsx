@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import {
     ShoppingBag, History, UtensilsCrossed, QrCode,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useRestaurant } from '@/hooks/useRestaurant';
 import { GlobalSearch } from '@/components/dashboard/GlobalSearch';
 import { NotificationBell } from '@/components/dashboard/NotificationBell';
 import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
@@ -18,16 +19,16 @@ import { hasPermission, type PermissionType } from '@/components/dashboard/RoleG
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
-// Navigation items with Pro tier indicators and role permissions
-const navigation = [
-    { name: 'Live Orders', href: '/dashboard/orders', icon: ShoppingBag, shortName: 'Orders', proOnly: false, permission: 'can_view_orders' as PermissionType },
-    { name: 'Order History', href: '/dashboard/history', icon: History, shortName: 'History', proOnly: false, permission: 'can_view_history' as PermissionType },
-    { name: 'Menu Management', href: '/dashboard/menu', icon: UtensilsCrossed, shortName: 'Menu', proOnly: false, permission: 'can_view_menu' as PermissionType },
-    { name: 'Tables & QR', href: '/dashboard/tables', icon: QrCode, shortName: 'Tables', proOnly: false, permission: 'can_view_tables' as PermissionType },
-    { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3, shortName: 'Analytics', proOnly: true, permission: 'can_view_analytics' as PermissionType },
-    { name: 'Inventory', href: '/dashboard/inventory', icon: Package, shortName: 'Inventory', proOnly: true, permission: 'can_view_inventory' as PermissionType },
-    { name: 'Branding', href: '/dashboard/branding', icon: Palette, shortName: 'Brand', proOnly: true, permission: 'can_view_branding' as PermissionType },
-    { name: 'Account Settings', href: '/dashboard/account', icon: UserCircle, shortName: 'Account', proOnly: false, permission: 'can_view_account' as PermissionType },
+// Base navigation structure
+const baseNavigation = [
+    { name: 'Live Orders', basePath: '/dashboard/orders', icon: ShoppingBag, shortName: 'Orders', proOnly: false, permission: 'can_view_orders' as PermissionType },
+    { name: 'Order History', basePath: '/dashboard/history', icon: History, shortName: 'History', proOnly: false, permission: 'can_view_history' as PermissionType },
+    { name: 'Menu Management', basePath: '/dashboard/menu', icon: UtensilsCrossed, shortName: 'Menu', proOnly: false, permission: 'can_view_menu' as PermissionType },
+    { name: 'Tables & QR', basePath: '/dashboard/tables', icon: QrCode, shortName: 'Tables', proOnly: false, permission: 'can_view_tables' as PermissionType },
+    { name: 'Analytics', basePath: '/dashboard/analytics', icon: BarChart3, shortName: 'Analytics', proOnly: true, permission: 'can_view_analytics' as PermissionType },
+    { name: 'Inventory', basePath: '/dashboard/inventory', icon: Package, shortName: 'Inventory', proOnly: true, permission: 'can_view_inventory' as PermissionType },
+    { name: 'Branding', basePath: '/dashboard/branding', icon: Palette, shortName: 'Brand', proOnly: true, permission: 'can_view_branding' as PermissionType },
+    { name: 'Account Settings', basePath: '/dashboard/account', icon: UserCircle, shortName: 'Account', proOnly: false, permission: 'can_view_account' as PermissionType },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -37,11 +38,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const [upgradeFeature, setUpgradeFeature] = useState<string>('');
     const pathname = usePathname();
+    const params = useParams<{ storeId: string }>();
     const router = useRouter();
-    const { user, session, loading, signOut, tenantName, tenantId, error, userRole, subscriptionTier } = useAuth();
+    const { user, session, loading, signOut, error, userRole } = useAuth();
+    const { storeId: activeStoreId, isSuperAdmin, subscriptionTier, tenantName } = useRestaurant();
+    const urlStoreId = params?.storeId || '';
+
+    // Check Multi-Tab Isolation: If the URL's storeId does not match the session's tenantId once loaded.
+    // Super admins are strictly exempted from this check.
+    useEffect(() => {
+        if (!loading && !isSuperAdmin && urlStoreId && activeStoreId && urlStoreId !== activeStoreId) {
+            // "Different Session Detected" warning / isolation mechanism
+            toast.error('Session mismatch detected! You are currently logged into a different restaurant.', { duration: 5000 });
+            router.replace(`/${activeStoreId}/dashboard/orders`);
+        }
+    }, [activeStoreId, urlStoreId, loading, router, isSuperAdmin]);
 
     // Check if user has Pro tier
     const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+
+    // Map base navigation to dynamic URLs with storeId
+    const navigation = baseNavigation.map(item => ({
+        ...item,
+        href: `/${activeStoreId || urlStoreId}${item.basePath}`
+    }));
 
     // Filter navigation based on user role permissions
     const filteredNavigation = navigation.filter(item =>
@@ -50,8 +70,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     // Handle clicking on a Pro-only feature when on Starter tier
     const handleNavClick = (item: typeof navigation[0]) => {
-        // Check role permission first
-        if (!hasPermission(userRole, item.permission)) {
+        // Check role permission first (super admins bypass)
+        if (!isSuperAdmin && !hasPermission(userRole, item.permission)) {
             toast.error('Access Denied: You do not have permission to view this page.');
             return;
         }
@@ -65,13 +85,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.push(item.href);
         router.refresh();
     };
-
-    // Super admin should never be on the dashboard — redirect to /super-admin
-    useEffect(() => {
-        if (userRole === 'super_admin') {
-            router.replace('/super-admin');
-        }
-    }, [userRole, router]);
 
     // Refresh session on route change to prevent stale state
     useEffect(() => {
@@ -139,7 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* Navigation */}
                         <nav className="flex-1 px-3 py-4 space-y-1">
                             {filteredNavigation.map((item) => {
-                                const isActive = pathname === item.href || (pathname === '/dashboard' && item.href === '/dashboard/orders');
+                                const isActive = pathname === item.href || (pathname === `/${activeStoreId || urlStoreId}/dashboard` && item.href === `/${activeStoreId || urlStoreId}/dashboard/orders`);
                                 const isLocked = item.proOnly && !isPro;
                                 return (
                                     <button
@@ -306,7 +319,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                                 <span>Database Connected: <span className="font-medium text-slate-700">{tenantName || 'Loading...'}</span></span>
-                                {tenantId && <span className="text-slate-400">({tenantId})</span>}
+                                {activeStoreId && <span className="text-slate-400">({activeStoreId})</span>}
                             </div>
                         </div>
                     </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, ShoppingBag, UtensilsCrossed, QrCode, History, ArrowRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -20,11 +20,11 @@ interface SearchResult {
 }
 
 // ─── Static quick-navigation links ───────────────────────────────────────────
-const NAV_LINKS: SearchResult[] = [
-    { id: 'nav-orders', type: 'nav', title: 'Live Orders', subtitle: 'Monitor active orders', href: '/dashboard/orders', icon: <ShoppingBag className="w-4 h-4" /> },
-    { id: 'nav-history', type: 'nav', title: 'Order History', subtitle: 'View past orders & revenue', href: '/dashboard/history', icon: <History className="w-4 h-4" /> },
-    { id: 'nav-menu', type: 'nav', title: 'Menu Management', subtitle: 'Manage menu items', href: '/dashboard/menu', icon: <UtensilsCrossed className="w-4 h-4" /> },
-    { id: 'nav-tables', type: 'nav', title: 'Tables & QR', subtitle: 'Floor plan & QR codes', href: '/dashboard/tables', icon: <QrCode className="w-4 h-4" /> },
+const NAV_LINKS_BASE = [
+    { id: 'nav-orders', type: 'nav', title: 'Live Orders', subtitle: 'Monitor active orders', basePath: '/dashboard/orders', icon: <ShoppingBag className="w-4 h-4" /> },
+    { id: 'nav-history', type: 'nav', title: 'Order History', subtitle: 'View past orders & revenue', basePath: '/dashboard/history', icon: <History className="w-4 h-4" /> },
+    { id: 'nav-menu', type: 'nav', title: 'Menu Management', subtitle: 'Manage menu items', basePath: '/dashboard/menu', icon: <UtensilsCrossed className="w-4 h-4" /> },
+    { id: 'nav-tables', type: 'nav', title: 'Tables & QR', subtitle: 'Floor plan & QR codes', basePath: '/dashboard/tables', icon: <QrCode className="w-4 h-4" /> },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -45,6 +45,14 @@ export function GlobalSearch() {
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
+    const params = useParams<{ storeId: string }>();
+    const storeId = params?.storeId || '';
+
+    // Dynamically resolved nav links
+    const NAV_LINKS: SearchResult[] = NAV_LINKS_BASE.map(n => ({
+        ...n,
+        href: `/${storeId}${n.basePath}`
+    })) as SearchResult[];
 
     // ── Search Supabase + filter nav links ────────────────────────────────────
     const runSearch = useCallback(async (q: string) => {
@@ -78,7 +86,7 @@ export function GlobalSearch() {
                 type: 'order',
                 title: `Order #${o.daily_order_number ?? o.id.slice(-6).toUpperCase()}`,
                 subtitle: `Table ${o.table_number}`,
-                href: '/dashboard/orders',
+                href: `/${storeId}/dashboard/orders`,
                 icon: <ShoppingBag className="w-4 h-4" />,
                 badge: o.status,
                 badgeColor: STATUS_COLORS[o.status] ?? STATUS_COLORS.new,
@@ -89,7 +97,7 @@ export function GlobalSearch() {
                 type: 'menu',
                 title: m.name,
                 subtitle: `₹${m.price}`,
-                href: '/dashboard/menu',
+                href: `/${storeId}/dashboard/menu`,
                 icon: <UtensilsCrossed className="w-4 h-4" />,
                 badge: m.available ? 'Available' : 'Off menu',
                 badgeColor: m.available ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700',
@@ -116,7 +124,7 @@ export function GlobalSearch() {
     useEffect(() => {
         const t = setTimeout(() => runSearch(query), 250);
         return () => clearTimeout(t);
-    }, [query, runSearch]);
+    }, [query, runSearch, storeId]);
 
     // ── Close on outside click ────────────────────────────────────────────────
     useEffect(() => {

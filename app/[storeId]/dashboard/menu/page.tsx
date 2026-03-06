@@ -9,6 +9,7 @@ import { fetchMenuItems, fetchCategories, toggleMenuItemAvailability, deleteMenu
 import type { MenuItem, Category } from '@/lib/types';
 import { setItemAvailability, seedAvailabilityMap, applyAvailabilityOverrides } from '@/lib/menuAvailability';
 import { useAuth } from '@/context/AuthContext';
+import { useRestaurant } from '@/hooks/useRestaurant';
 import { RoleGuard } from '@/components/dashboard/RoleGuard';
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -124,7 +125,7 @@ function ExcelUploadModal({ open, onClose, tenantId, onImportComplete }: { open:
                 <div className="p-6 space-y-4">
                     {!result ? (
                         <>
-                            <div 
+                            <div
                                 onDragEnter={handleDrag}
                                 onDragLeave={handleDrag}
                                 onDragOver={handleDrag}
@@ -207,11 +208,11 @@ function ExcelUploadModal({ open, onClose, tenantId, onImportComplete }: { open:
                         {result ? 'Close' : 'Cancel'}
                     </button>
                     {!result && (
-                        <motion.button 
-                            whileHover={{ scale: 1.02 }} 
-                            whileTap={{ scale: 0.98 }} 
-                            onClick={handleUpload} 
-                            disabled={uploading || !file} 
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={handleUpload}
+                            disabled={uploading || !file}
                             className="flex-1 h-11 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl text-sm font-medium shadow-lg shadow-emerald-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -306,7 +307,7 @@ export default function MenuManagementPage() {
     const [showExcelModal, setShowExcelModal] = useState(false);
     const [editItem, setEditItem] = useState<MenuItem | null>(null);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
-    const { tenantId, tenantLoading } = useAuth();
+    const { storeId: tenantId, loading: tenantLoading } = useRestaurant();
 
     const loadData = async () => {
         if (!tenantId) {
@@ -377,93 +378,93 @@ export default function MenuManagementPage() {
 
     return (
         <RoleGuard requiredPermission="can_view_menu">
-        <div className="space-y-4 lg:space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-semibold text-slate-900">Menu Management</h1>
-                    <p className="text-sm text-slate-500 mt-1">Manage your restaurant menu items and availability</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={loadData} className="p-2 rounded-xl hover:bg-slate-100 transition-colors" title="Refresh"><RefreshCw className="w-4 h-4 text-slate-500" /></button>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowExcelModal(true)} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-50 transition-colors">
-                        <FileSpreadsheet className="w-4 h-4" />Import Excel
-                    </motion.button>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { setEditItem(null); setShowModal(true); }} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-shadow">
-                        <Plus className="w-4 h-4" />Add Item
-                    </motion.button>
-                </div>
-            </div>
-
-            {error && <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700"><AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{error}</span></motion.div>}
-
-            <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="lg:w-64 flex-shrink-0">
-                    <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
-                        <h3 className="text-sm font-semibold text-slate-900 mb-3">Categories</h3>
-                        <div className="lg:space-y-1 flex lg:flex-col gap-2 overflow-x-auto pb-2 lg:pb-0 -mx-1 px-1 lg:mx-0 lg:px-0">
-                            {categoryList.map(cat => (
-                                <div key={cat.id} className="flex items-center group">
-                                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedCategory(cat.id)} className={cn('flex-1 flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap lg:w-full', selectedCategory === cat.id ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border border-blue-200/60' : 'text-slate-600 hover:bg-slate-50')}>
-                                        <span className="text-lg lg:text-base">{cat.icon}</span>
-                                        <span className="flex-1 text-left hidden lg:inline">{cat.name}</span>
-                                        <span className="lg:hidden">{cat.name.split(' ')[0]}</span>
-                                        <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium hidden lg:inline', selectedCategory === cat.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600')}>{cat.count}</span>
-                                    </motion.button>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-slate-200/60">
-                            <motion.button onClick={() => setShowCategoryModal(true)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-xl text-sm font-medium text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/50 transition-colors">
-                                <Plus className="w-4 h-4" /> Add Category
-                            </motion.button>
-                        </div>
+            <div className="space-y-4 lg:space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-semibold text-slate-900">Menu Management</h1>
+                        <p className="text-sm text-slate-500 mt-1">Manage your restaurant menu items and availability</p>
                     </div>
-                </motion.div>
-
-                <div className="flex-1 space-y-4">
-                    <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        <input type="text" placeholder="Search menu items…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-12 pl-12 pr-4 bg-white border border-slate-200/60 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 transition-all shadow-sm" />
+                    <div className="flex items-center gap-2">
+                        <button onClick={loadData} className="p-2 rounded-xl hover:bg-slate-100 transition-colors" title="Refresh"><RefreshCw className="w-4 h-4 text-slate-500" /></button>
+                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowExcelModal(true)} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-50 transition-colors">
+                            <FileSpreadsheet className="w-4 h-4" />Import Excel
+                        </motion.button>
+                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { setEditItem(null); setShowModal(true); }} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-shadow">
+                            <Plus className="w-4 h-4" />Add Item
+                        </motion.button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredItems.map((item, i) => {
-                            const catName = item.categories?.name ?? categories.find(c => c.id === item.category_id)?.name ?? 'Unknown';
-                            const isDeleting = actionLoading === item.id;
-                            return (
-                                <motion.div key={item.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }} whileHover={{ y: -4 }} className={cn('bg-white rounded-2xl p-5 border shadow-sm hover:shadow-md transition-all', item.available ? 'border-slate-200/60' : 'border-slate-200/60 opacity-60', isDeleting && 'opacity-40')}>
-                                    <div className="flex items-start justify-between mb-3">
-                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center overflow-hidden">
-                                            {item.image_url ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-2xl">{getCategoryIcon(catName)}</span>}
+                </div>
+
+                {error && <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700"><AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{error}</span></motion.div>}
+
+                <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+                    <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="lg:w-64 flex-shrink-0">
+                        <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
+                            <h3 className="text-sm font-semibold text-slate-900 mb-3">Categories</h3>
+                            <div className="lg:space-y-1 flex lg:flex-col gap-2 overflow-x-auto pb-2 lg:pb-0 -mx-1 px-1 lg:mx-0 lg:px-0">
+                                {categoryList.map(cat => (
+                                    <div key={cat.id} className="flex items-center group">
+                                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedCategory(cat.id)} className={cn('flex-1 flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap lg:w-full', selectedCategory === cat.id ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border border-blue-200/60' : 'text-slate-600 hover:bg-slate-50')}>
+                                            <span className="text-lg lg:text-base">{cat.icon}</span>
+                                            <span className="flex-1 text-left hidden lg:inline">{cat.name}</span>
+                                            <span className="lg:hidden">{cat.name.split(' ')[0]}</span>
+                                            <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium hidden lg:inline', selectedCategory === cat.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600')}>{cat.count}</span>
+                                        </motion.button>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-slate-200/60">
+                                <motion.button onClick={() => setShowCategoryModal(true)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-xl text-sm font-medium text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/50 transition-colors">
+                                    <Plus className="w-4 h-4" /> Add Category
+                                </motion.button>
+                            </div>
+                        </div>
+                    </motion.div>
+
+                    <div className="flex-1 space-y-4">
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <input type="text" placeholder="Search menu items…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-12 pl-12 pr-4 bg-white border border-slate-200/60 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 transition-all shadow-sm" />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {filteredItems.map((item, i) => {
+                                const catName = item.categories?.name ?? categories.find(c => c.id === item.category_id)?.name ?? 'Unknown';
+                                const isDeleting = actionLoading === item.id;
+                                return (
+                                    <motion.div key={item.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }} whileHover={{ y: -4 }} className={cn('bg-white rounded-2xl p-5 border shadow-sm hover:shadow-md transition-all', item.available ? 'border-slate-200/60' : 'border-slate-200/60 opacity-60', isDeleting && 'opacity-40')}>
+                                        <div className="flex items-start justify-between mb-3">
+                                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center overflow-hidden">
+                                                {item.image_url ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-2xl">{getCategoryIcon(catName)}</span>}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span title={item.type} className={cn('w-3 h-3 rounded-full border-2', item.type === 'veg' ? 'bg-emerald-500 border-emerald-600' : 'bg-rose-500 border-rose-600')} />
+                                                <Switch checked={item.available ?? true} onCheckedChange={() => handleToggleAvailability(item.id, item.available ?? true)} disabled={isDeleting} />
+                                            </div>
+                                        </div>
+                                        <h3 className="font-semibold text-slate-900 mb-1">{item.name}</h3>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <span className="text-xs px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg font-medium">{catName}</span>
+                                            <span className="text-lg font-semibold text-slate-900">₹{item.price}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span title={item.type} className={cn('w-3 h-3 rounded-full border-2', item.type === 'veg' ? 'bg-emerald-500 border-emerald-600' : 'bg-rose-500 border-rose-600')} />
-                                            <Switch checked={item.available ?? true} onCheckedChange={() => handleToggleAvailability(item.id, item.available ?? true)} disabled={isDeleting} />
+                                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setEditItem(item); setShowModal(true); }} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors"><Edit className="w-3.5 h-3.5" /> Edit</motion.button>
+                                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleDelete(item.id)} disabled={isDeleting} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></motion.button>
                                         </div>
-                                    </div>
-                                    <h3 className="font-semibold text-slate-900 mb-1">{item.name}</h3>
-                                    <div className="flex items-center justify-between mb-4">
-                                        <span className="text-xs px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg font-medium">{catName}</span>
-                                        <span className="text-lg font-semibold text-slate-900">₹{item.price}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setEditItem(item); setShowModal(true); }} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors"><Edit className="w-3.5 h-3.5" /> Edit</motion.button>
-                                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleDelete(item.id)} disabled={isDeleting} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></motion.button>
-                                    </div>
-                                    {!(item.available ?? true) && <div className="mt-3 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg"><p className="text-xs text-amber-700 font-medium">Currently Unavailable</p></div>}
-                                </motion.div>
-                            );
-                        })}
+                                        {!(item.available ?? true) && <div className="mt-3 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg"><p className="text-xs text-amber-700 font-medium">Currently Unavailable</p></div>}
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                        {filteredItems.length === 0 && <div className="bg-white rounded-2xl p-12 border border-slate-200/60 text-center"><p className="text-4xl mb-3">🍽️</p><p className="text-slate-500">No menu items found</p></div>}
                     </div>
-                    {filteredItems.length === 0 && <div className="bg-white rounded-2xl p-12 border border-slate-200/60 text-center"><p className="text-4xl mb-3">🍽️</p><p className="text-slate-500">No menu items found</p></div>}
                 </div>
-            </div>
 
-            <AnimatePresence>
-                {showModal && <ItemModal open={showModal} onClose={() => { setShowModal(false); setEditItem(null); }} categories={categories} editItem={editItem} onSave={handleSaveItem} />}
-                {showCategoryModal && <CategoryModal open={showCategoryModal} onClose={() => setShowCategoryModal(false)} onSave={handleSaveCategory} />}
-                {showExcelModal && <ExcelUploadModal open={showExcelModal} onClose={() => setShowExcelModal(false)} tenantId={tenantId} onImportComplete={loadData} />}
-            </AnimatePresence>
-        </div>
+                <AnimatePresence>
+                    {showModal && <ItemModal open={showModal} onClose={() => { setShowModal(false); setEditItem(null); }} categories={categories} editItem={editItem} onSave={handleSaveItem} />}
+                    {showCategoryModal && <CategoryModal open={showCategoryModal} onClose={() => setShowCategoryModal(false)} onSave={handleSaveCategory} />}
+                    {showExcelModal && <ExcelUploadModal open={showExcelModal} onClose={() => setShowExcelModal(false)} tenantId={tenantId} onImportComplete={loadData} />}
+                </AnimatePresence>
+            </div>
         </RoleGuard>
     );
 }

@@ -7,6 +7,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { cn } from '@/lib/utils';
 import { getTables, setTables as setSharedTables, type Table } from '@/data/sharedData';
 import { useAuth } from '@/context/AuthContext';
+import { useRestaurant } from '@/hooks/useRestaurant';
 import { ProFeatureGate, ProBadge } from '@/components/dashboard/ProFeatureGate';
 
 const MENU_CUSTOMER_PATH = process.env.NEXT_PUBLIC_MENU_CUSTOMER_PATH ?? '/customer';
@@ -75,16 +76,16 @@ function QRPreviewModal({ table, onClose, baseUrl, restaurantId }: { table: Tabl
 
 // ─── Table Management Modal ───────────────────────────────────────────────────
 
-function TableManagementModal({ 
-    tables, 
-    onClose, 
-    onAddTable, 
-    onEditTable, 
+function TableManagementModal({
+    tables,
+    onClose,
+    onAddTable,
+    onEditTable,
     onDeleteTable,
     isPro
-}: { 
-    tables: Table[]; 
-    onClose: () => void; 
+}: {
+    tables: Table[];
+    onClose: () => void;
     onAddTable: (name: string, seats: number) => void;
     onEditTable: (id: string, name: string, seats: number) => void;
     onDeleteTable: (id: string) => void;
@@ -124,18 +125,18 @@ function TableManagementModal({
     };
 
     return (
-        <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4" 
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4"
             onClick={onClose}
         >
-            <motion.div 
-                initial={{ scale: 0.9, y: 24 }} 
-                animate={{ scale: 1, y: 0 }} 
-                exit={{ scale: 0.9, y: 24 }} 
-                onClick={e => e.stopPropagation()} 
+            <motion.div
+                initial={{ scale: 0.9, y: 24 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 24 }}
+                onClick={e => e.stopPropagation()}
                 className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
             >
                 {/* Header */}
@@ -159,9 +160,9 @@ function TableManagementModal({
                     <h4 className="text-sm font-semibold text-slate-700 mb-3">Add New Table</h4>
                     <div className="flex flex-col sm:flex-row gap-3">
                         <div className="flex-1">
-                            <input 
-                                type="text" 
-                                placeholder="Table name (e.g., Table 12, VIP Room)" 
+                            <input
+                                type="text"
+                                placeholder="Table name (e.g., Table 12, VIP Room)"
                                 value={newTableName}
                                 onChange={e => setNewTableName(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleAdd()}
@@ -171,18 +172,18 @@ function TableManagementModal({
                         <div className="flex items-center gap-2">
                             <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 h-11">
                                 <Users className="w-4 h-4 text-slate-400" />
-                                <input 
-                                    type="number" 
-                                    min={1} 
-                                    max={20} 
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={20}
                                     value={newTableSeats}
                                     onChange={e => setNewTableSeats(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
                                     className="w-12 text-sm text-center focus:outline-none"
                                 />
                                 <span className="text-xs text-slate-400">seats</span>
                             </div>
-                            <motion.button 
-                                whileHover={{ scale: 1.02 }} 
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={handleAdd}
                                 disabled={!newTableName.trim()}
@@ -199,7 +200,7 @@ function TableManagementModal({
                 <div className="flex-1 overflow-y-auto p-5">
                     <div className="space-y-2">
                         {tables.map((table, index) => (
-                            <motion.div 
+                            <motion.div
                                 key={table.id}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -212,8 +213,8 @@ function TableManagementModal({
                                 {editingTable === table.id ? (
                                     /* Edit Mode */
                                     <div className="flex flex-col sm:flex-row gap-3">
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             value={editName}
                                             onChange={e => setEditName(e.target.value)}
                                             autoFocus
@@ -222,23 +223,23 @@ function TableManagementModal({
                                         <div className="flex items-center gap-2">
                                             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 h-10">
                                                 <Users className="w-4 h-4 text-slate-400" />
-                                                <input 
-                                                    type="number" 
-                                                    min={1} 
-                                                    max={20} 
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    max={20}
                                                     value={editSeats}
                                                     onChange={e => setEditSeats(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
                                                     className="w-10 text-sm text-center bg-transparent focus:outline-none"
                                                 />
                                             </div>
-                                            <button 
+                                            <button
                                                 onClick={saveEdit}
                                                 className="h-10 px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
                                             >
                                                 <Check className="w-4 h-4" />
                                                 Save
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => setEditingTable(null)}
                                                 className="h-10 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm transition-colors"
                                             >
@@ -259,13 +260,13 @@ function TableManagementModal({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <button 
+                                            <button
                                                 onClick={() => confirmDelete(table.id)}
                                                 className="h-9 px-4 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-sm font-medium transition-colors"
                                             >
                                                 Delete
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => setShowDeleteConfirm(null)}
                                                 className="h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm transition-colors"
                                             >
@@ -280,8 +281,8 @@ function TableManagementModal({
                                             <div className={cn(
                                                 "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm",
                                                 table.status === 'available' ? "bg-emerald-100 text-emerald-700" :
-                                                table.status === 'busy' ? "bg-rose-100 text-rose-700" :
-                                                "bg-amber-100 text-amber-700"
+                                                    table.status === 'busy' ? "bg-rose-100 text-rose-700" :
+                                                        "bg-amber-100 text-amber-700"
                                             )}>
                                                 {table.id.replace('T-', '')}
                                             </div>
@@ -291,14 +292,14 @@ function TableManagementModal({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <button 
+                                            <button
                                                 onClick={() => startEdit(table)}
                                                 className="h-9 px-3 bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-600 rounded-lg text-sm transition-colors flex items-center gap-1"
                                             >
                                                 <Edit3 className="w-3.5 h-3.5" />
                                                 Edit
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => setShowDeleteConfirm(table.id)}
                                                 className="h-9 w-9 bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors flex items-center justify-center"
                                             >
@@ -310,7 +311,7 @@ function TableManagementModal({
                             </motion.div>
                         ))}
                     </div>
-                    
+
                     {tables.length === 0 && (
                         <div className="text-center py-12">
                             <QrCode className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -496,7 +497,7 @@ export default function TablesQRCodesPage() {
     const [isLoaded, setIsLoaded] = useState(false);
     // baseUrl is computed client-side only to avoid SSR/hydration mismatch
     const [baseUrl, setBaseUrl] = useState('');
-    const { tenantId, subscriptionTier } = useAuth();
+    const { storeId: tenantId, subscriptionTier } = useRestaurant();
     // Pro tier can be 'pro', '2k', or '2.5k' (backwards compatibility)
     const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
 
@@ -557,7 +558,7 @@ export default function TablesQRCodesPage() {
             setSharedTables(newTables);
         }
     };
-    
+
     // Modal-based table management handlers
     const addTableWithDetails = (name: string, seats: number) => {
         const newId = `T-${String(tables.length + 1).padStart(2, '0')}`;
@@ -568,7 +569,7 @@ export default function TablesQRCodesPage() {
         localStorage.setItem('hotelmenu_floorplan_tables', JSON.stringify(newTables));
         setSharedTables(newTables);
     };
-    
+
     const editTable = (id: string, name: string, seats: number) => {
         const newTables = tables.map(t => t.id === id ? { ...t, name, seats } : t);
         setTables(newTables);
@@ -576,7 +577,7 @@ export default function TablesQRCodesPage() {
         localStorage.setItem('hotelmenu_floorplan_tables', JSON.stringify(newTables));
         setSharedTables(newTables);
     };
-    
+
     const deleteTable = (id: string) => {
         const newTables = tables.filter(t => t.id !== id);
         setTables(newTables);
@@ -584,7 +585,7 @@ export default function TablesQRCodesPage() {
         localStorage.setItem('hotelmenu_floorplan_tables', JSON.stringify(newTables));
         setSharedTables(newTables);
     };
-    
+
     const addWall = () => { setWalls([...walls, { id: `W-${walls.length + 1}`, x: 50, y: 50, width: 200, height: 8, orientation: 'horizontal' }]); setHasChanges(true); };
     const addDesk = () => { setDesks([...desks, { id: `D-${desks.length + 1}`, x: 150, y: 150, width: 80, height: 120 }]); setHasChanges(true); };
     const saveLayout = () => { setFloorPlans(prev => [...prev, { id: `plan-${Date.now()}`, name: `Layout ${prev.length + 1}`, tables, walls, desks }]); setHasChanges(false); setShowSaveMsg(true); setTimeout(() => setShowSaveMsg(false), 2000); };
@@ -625,8 +626,8 @@ export default function TablesQRCodesPage() {
                     </div>
                     <div className="flex items-center gap-2 bg-white rounded-xl p-1 border border-slate-200/60 w-full sm:w-auto">
                         {[{ key: 'qr', label: 'QR Codes', icon: <QrCode className="w-4 h-4" />, proOnly: false }, { key: 'floor', label: 'Floor Plan', icon: <span className="text-sm">📐</span>, proOnly: true }].map(({ key, label, icon, proOnly }) => (
-                            <button 
-                                key={key} 
+                            <button
+                                key={key}
                                 onClick={() => !proOnly || isPro ? setViewMode(key as 'qr' | 'floor') : null}
                                 disabled={proOnly && !isPro}
                                 className={cn(
@@ -721,9 +722,9 @@ export default function TablesQRCodesPage() {
             <AnimatePresence>
                 {previewTable && <QRPreviewModal table={previewTable} onClose={() => setPreviewTable(null)} baseUrl={baseUrl} restaurantId={tenantId} />}
                 {showManageModal && (
-                    <TableManagementModal 
-                        tables={tables} 
-                        onClose={() => setShowManageModal(false)} 
+                    <TableManagementModal
+                        tables={tables}
+                        onClose={() => setShowManageModal(false)}
                         onAddTable={addTableWithDetails}
                         onEditTable={editTable}
                         onDeleteTable={deleteTable}
