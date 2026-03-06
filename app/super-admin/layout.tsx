@@ -5,6 +5,7 @@
  * Protected route that only allows users with role: 'super_admin'
  */
 
+import { SuperAdminAuthProvider, useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,12 +22,12 @@ const navigation = [
     { name: 'Activity Logs', href: '/super-admin/logs', icon: ScrollText },
 ];
 
-export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
+export default function SuperAdminLayout({ children }: { children: React.ReactNode }) { 
     const [collapsed, setCollapsed] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const pathname = usePathname();
     const router = useRouter();
-    const { user, session, loading, signOut, tenantLoading, userRole } = useAuth();
+    const { user, session, loading, signOut, userRole } = useSuperAdminAuth();
 
     const isSuperAdmin = userRole === 'super_admin';
     
