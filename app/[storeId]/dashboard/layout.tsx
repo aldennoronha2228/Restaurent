@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { GlobalSearch } from '@/components/dashboard/GlobalSearch';
 import { NotificationBell } from '@/components/dashboard/NotificationBell';
@@ -53,19 +54,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const urlStoreId = params?.storeId || '';
     const [showConflict, setShowConflict] = useState(false);
 
-    // Super admin should NEVER be on the tenant dashboard — redirect back to /super-admin.
-    // This was intentionally removed before but caused the page-switching bug.
+    // Get Super Admin state (God Mode check)
+    const {
+        session: superAdminSession,
+        userRole: superAdminRole,
+        loading: superAdminLoading
+    } = useSuperAdminAuth();
+
+    const isGodMode = superAdminSession && superAdminRole === 'super_admin';
+
+    // Instead of redirecting super admins to /super-admin, we let them view this page!
+    // But if a regular tenant user has no session, redirect them to login.
     useEffect(() => {
-        if (!loading && userRole === 'super_admin') {
-            router.replace('/super-admin');
+        if (!loading && !superAdminLoading) {
+            if (!session && !isGodMode) {
+                router.replace('/login');
+            }
         }
-    }, [loading, userRole, router]);
+    }, [loading, superAdminLoading, session, isGodMode, router]);
 
     // ── Session Guard (inline overlay — no redirect, no separate page) ───────────
     // If a non-super-admin user navigates to /restaurant-a/dashboard
     // while their session belongs to restaurant-b, show a conflict overlay.
     // No router.replace() = no new page = no prerender target in the build.
     useEffect(() => {
+        // God Mode bypasses the conflict check entirely.
+        if (isGodMode) {
+            setShowConflict(false);
+            return;
+        }
+
         if (
             !loading &&
             userRole &&
@@ -78,7 +96,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         } else {
             setShowConflict(false);
         }
-    }, [activeStoreId, urlStoreId, loading, userRole]);
+    }, [activeStoreId, urlStoreId, loading, userRole, isGodMode]);
 
     // Check if user has Pro tier
     const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
@@ -95,8 +113,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }));
 
     // Filter navigation based on user role permissions
+    const activeRole = userRole || superAdminRole;
+
     const filteredNavigation = navigation.filter(item =>
-        hasPermission(userRole, item.permission)
+        hasPermission(activeRole, item.permission)
     );
 
     // Handle clicking on a Pro-only feature when on Starter tier
@@ -136,12 +156,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
     }, [error, router]);
 
+    // Provide a localized sign out for the God Mode header
+    const { signOut: superAdminSignOut } = useSuperAdminAuth();
+
     const handleSignOut = async () => {
-        await signOut();
+        // If they are exclusively relying on God Mode without a tenant session,
+        // sign them out of their super admin session. Otherwise sign out of tenant.
+        if (isGodMode && !session) {
+            await superAdminSignOut();
+        } else {
+            await signOut();
+        }
         router.push('/login');
     };
 
-    if (loading) {
+    if (loading || superAdminLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
                 <div className="flex flex-col items-center gap-4">
@@ -152,7 +181,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         );
     }
 
-    if (!session || !user) {
+    // If no tenant session AND no god mode session, block render
+    if (!session && !isGodMode) {
         return null; // Will redirect via useEffect
     }
 
@@ -266,8 +296,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         );
     }
 
-    const userInitial = user?.user_metadata?.full_name?.[0]
-        ?? user?.email?.[0]?.toUpperCase()
+    const activeUser = user || superAdminSession?.user;
+
+    const userInitial = activeUser?.user_metadata?.full_name?.[0]
+        ?? activeUser?.email?.[0]?.toUpperCase()
         ?? 'A';
 
     return (

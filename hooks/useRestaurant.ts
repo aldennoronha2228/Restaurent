@@ -25,10 +25,12 @@
 
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 
 export function useRestaurant() {
     const params = useParams<{ storeId: string }>();
-    const { tenantId, userRole, tenantName, subscriptionTier, tenantLoading } = useAuth();
+    const { tenantId, userRole: tenantRole, tenantName, subscriptionTier, tenantLoading } = useAuth();
+    const { session: superAdminSession, userRole: adminRole, loading: adminLoading } = useSuperAdminAuth();
 
     // ── 1. URL slug is the primary data-scoping key ──────────────────────
     // For super-admins navigating /[any-slug]/dashboard, the URL slug is
@@ -36,7 +38,7 @@ export function useRestaurant() {
     // slug MUST match their session tenantId (enforced by the layout guard).
     const urlStoreId = params?.storeId || '';
 
-    const isSuperAdmin = userRole === 'super_admin';
+    const isSuperAdmin = (superAdminSession && adminRole === 'super_admin') || tenantRole === 'super_admin';
 
     // ── 2. Authorization check ────────────────────────────────────────────
     // Super-admins can navigate anywhere. Regular users are only authorized
@@ -67,6 +69,6 @@ export function useRestaurant() {
         tenantName: isSuperAdmin && urlStoreId
             ? `[Admin] ${urlStoreId}`
             : tenantName,
-        loading: tenantLoading,
+        loading: tenantLoading || adminLoading,
     };
 }

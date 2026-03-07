@@ -20,6 +20,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 
 // Define permissions for each role
 export const ROLE_PERMISSIONS = {
@@ -145,14 +146,19 @@ export function RoleGuard({
     const router = useRouter();
     const pathname = usePathname();
     const { userRole, loading, tenantId } = useAuth();
+    const { session: superAdminSession, userRole: superAdminRole, loading: superAdminLoading } = useSuperAdminAuth();
 
-    const hasAccess = hasPermission(userRole, requiredPermission);
+    // God mode bypass
+    const isSuperAdmin = superAdminSession && superAdminRole === 'super_admin';
+    const activeRole = isSuperAdmin ? 'super_admin' : userRole;
+
+    const hasAccess = isSuperAdmin || hasPermission(activeRole, requiredPermission);
 
     // Resolve dynamic fallback route
     const resolvedFallback = tenantId ? `/${tenantId}${fallbackRoute}` : fallbackRoute;
 
     useEffect(() => {
-        if (loading) return;
+        if (loading || superAdminLoading) return;
 
         if (!hasAccess) {
             if (showToast) {
@@ -160,10 +166,10 @@ export function RoleGuard({
             }
             router.replace(resolvedFallback);
         }
-    }, [hasAccess, loading, router, resolvedFallback, showToast]);
+    }, [hasAccess, loading, superAdminLoading, router, resolvedFallback, showToast]);
 
     // Show nothing while checking permissions
-    if (loading) {
+    if (loading || superAdminLoading) {
         return (
             <div className="flex items-center justify-center min-h-[200px]">
                 <div className="w-8 h-8 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />

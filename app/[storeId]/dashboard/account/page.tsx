@@ -8,6 +8,7 @@ import {
     ChevronDown, Crown, Users, Briefcase, ToggleLeft, ToggleRight, UserX, Copy, Check
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
@@ -35,9 +36,12 @@ const TEAM_LIMITS = {
 
 export default function AccountPage() {
     const { user, subscriptionTier } = useAuth();
-    const { storeId: tenantId } = useRestaurant();
+    const { session: superAdminSession } = useSuperAdminAuth();
+    const { storeId: tenantId, isSuperAdmin } = useRestaurant();
 
-    // Check if Pro tier
+    const activeUser = user || superAdminSession?.user;
+
+    // Check if Pro tier or God Mode
     const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
 
     // ─── Email Reports State ──────────────────────────────────────────────────
@@ -292,13 +296,15 @@ export default function AccountPage() {
                 <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-hidden p-6 lg:p-8">
                     <div className="flex flex-col md:flex-row items-center gap-6">
                         <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-3xl font-bold shadow-xl shadow-blue-500/20">
-                            {user?.email?.[0].toUpperCase()}
+                            {activeUser?.email?.[0]?.toUpperCase() || 'A'}
                         </div>
                         <div className="flex-1 text-center md:text-left">
-                            <h2 className="text-xl font-bold text-slate-900">{user?.user_metadata?.full_name || 'Admin User'}</h2>
+                            <h2 className="text-xl font-bold text-slate-900">
+                                {isSuperAdmin ? 'Super Admin (God Mode)' : (activeUser?.user_metadata?.full_name || 'Admin User')}
+                            </h2>
                             <div className="flex items-center justify-center md:justify-start gap-2 mt-1.5 text-slate-500 text-sm">
                                 <Mail className="w-4 h-4" />
-                                {user?.email}
+                                {activeUser?.email}
                             </div>
                             <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-2">
                                 <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-semibold flex items-center gap-1.5">
