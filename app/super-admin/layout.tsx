@@ -4,14 +4,20 @@
  * Super Admin Layout
  * Protected route that only allows users with role: 'super_admin'
  *
- * IMPORTANT: Uses useAuth() (main AuthContext) — NOT SuperAdminAuthContext.
- * The super admin signs in via the main supabase client (hotel-menu-auth-v13).
- * SuperAdminAuthContext used supabaseSuperAdmin (hotel-superadmin-auth-v1) which
- * is a completely separate client and NEVER receives the session — causing a
- * redirect loop: /super-admin → (no session) → /login → (session found) → /super-admin → repeat.
+ * Uses SuperAdminAuthContext which watches the `supabaseSuperAdmin` client.
+ * That client reads from `hotelpro-admin-session` in localStorage — a
+ * completely separate storage key from the tenant dashboard's
+ * `hotelpro-tenant-session` in sessionStorage.
+ *
+ * Session seeding: the login page calls supabaseSuperAdmin.auth.setSession()
+ * after confirming role === 'super_admin', so this context always has a
+ * real session to read.
+ *
+ * Sign-out: only clears hotelpro-admin-session. Tenant sessions in
+ * other tabs are unaffected (isolated storage keys).
  */
 
-import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
@@ -20,6 +26,7 @@ import {
     ChevronLeft, LogOut, Shield, Menu, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
 
 const navigation = [
     { name: 'Overview', href: '/super-admin', icon: LayoutDashboard },
@@ -33,14 +40,15 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     const pathname = usePathname();
     const router = useRouter();
 
-    // Use the MAIN auth context — this is where the session actually lives.
-    const { session, loading, signOut, userRole, tenantLoading } = useAuth();
+    // Use the ADMIN-specific auth context.
+    // This watches supabaseSuperAdmin (hotelpro-admin-session in localStorage).
+    // Completely isolated from the tenant dashboard's supabase client.
+    const { session, loading, roleLoading, signOut, userRole } = useSuperAdminAuth();
 
     const isSuperAdmin = userRole === 'super_admin';
 
-    // Wait for BOTH session AND role to resolve before making any redirect decisions.
-    // Without tenantLoading, the role arrives async and could be null briefly, causing flicker.
-    const isFullyLoaded = !loading && !tenantLoading;
+    // Wait for BOTH session AND role to resolve before making redirect decisions.
+    const isFullyLoaded = !loading && !roleLoading;
 
     // Redirect if not authenticated (after loading completes)
     useEffect(() => {
@@ -57,13 +65,15 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     }, [isFullyLoaded, session, userRole, router]);
 
     useEffect(() => {
-        document.title = 'Super-Admin Page';
+        document.title = 'Super-Admin — HotelPro';
     }, []);
 
+    // Sign out from admin ONLY — does NOT touch the tenant session in other tabs
     const handleSignOut = async () => {
         await signOut();
         router.push('/login');
     };
+
 
     // Show spinner while auth is being resolved, or while we have a session but no role yet
     if (!isFullyLoaded || (session && !userRole)) {

@@ -1,29 +1,51 @@
 /**
- * lib/supabase.ts  (hardened)
- * ---------------------------
- * SECURITY changes vs original:
- *  1. Env vars are validated at import time via lib/env (fail-fast).
- *  2. Dashboard client: auth storage key namespaced and storageType is
- *     explicitly 'localStorage' — prevents accidental session bleed.
- *  3. Customer client: ALL auth mechanisms are disabled — no sessions,
- *     no token refresh, no URL session detection. Fully anonymous.
- *  4. Both clients: flowType 'pkce' is set on the dashboard client to
- *     prevent authorization-code interception attacks (PKCE).
- *  5. Added a server-side helper (getServerSession) for token validation
- *     inside middleware / server components without relying on cookies.
+ * lib/supabase.ts  (hardened + isolated sessions)
+ * -------------------------------------------------
+ * Two completely independent Supabase clients with different storage keys
+ * so the Super-Admin session and the Tenant session can NEVER overwrite
+ * each other in the browser.
+ *
+ * Storage layout
+ * ──────────────
+ *  Client               Storage         Key
+ *  ────────────────────────────────────────────────────────────
+ *  supabase (tenant)    sessionStorage  hotelpro-tenant-session
+ *  supabaseSuperAdmin   localStorage    hotelpro-admin-session
+ *  supabaseCustomer     (none)          __none__
+ *  supabaseAdmin        (server only)   n/a
+ *
+ * Why sessionStorage for tenants?
+ *   Each browser TAB gets its own isolated session.  This is the core
+ *   mechanism that prevents cross-tab contamination: logging into
+ *   Restaurant B in Tab 2 does NOT affect Restaurant A in Tab 1.
+ *
+ * Why localStorage for Super-Admin?
+ *   The super-admin session must survive page refreshes and persist
+ *   across tabs (the admin might have many tabs open).
+ *   It lives under a DIFFERENT key so tenant sign-in never touches it.
+ *
+ * Sign-out isolation
+ * ──────────────────
+ *   Calling supabase.auth.signOut()       → clears hotelpro-tenant-session only
+ *   Calling supabaseSuperAdmin.signOut()  → clears hotelpro-admin-session only
+ *   The two are 100% independent.
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { validateEnv, env } from './env';
 
-// Run at module load — throws if env is broken
+// Fail-fast on missing env vars
 validateEnv();
 
+/** Storage key constants — single source of truth */
+export const TENANT_SESSION_KEY = 'hotelpro-tenant-session';
+export const ADMIN_SESSION_KEY = 'hotelpro-admin-session';
+
 /**
- * Custom fetcher that routes requests through our local proxy
- * when running in the browser. This circumvents "Failed to fetch"
- * errors caused by security software (e.g. Kaspersky) blocking
- * direct connections to the supabase.co domain.
+ * Custom fetcher that routes Supabase requests through our local proxy.
+ * Circumvents "Failed to fetch" errors from security software (e.g. Kaspersky)
+ * that blocks direct connections to supabase.co.
+ * Includes enterprise-grade retry logic (3 attempts, exponential back-off).
  */
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     let urlStr: string;
@@ -31,7 +53,6 @@ const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promis
 
     if (input instanceof Request) {
         urlStr = input.url;
-        // Merge headers from Request object
         const headers = new Headers(requestInit.headers || {});
         input.headers.forEach((v, k) => {
             if (!headers.has(k)) headers.set(k, v);
@@ -40,35 +61,25 @@ const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promis
             ...requestInit,
             method: input.method || requestInit.method,
             headers,
-            // body cannot be easily cloned from Request if it's already used
-            // but for Supabase client, input is usually just the URL info or a fresh Request
         };
     } else {
         urlStr = input.toString();
     }
 
+    // Server-side: use native fetch directly
     if (typeof window === 'undefined') return fetch(input, requestInit);
 
     try {
         const u = new URL(urlStr);
         const supabaseHost = new URL(env.supabaseUrl).hostname;
 
-        // MATCH: direct host OR any supabase.co subdomain (to be safe)
         if (u.hostname === supabaseHost || u.hostname.endsWith('supabase.co')) {
             const proxyUrl = new URL('/api/auth/proxy', window.location.origin);
-
-            // Normalize path (ensure no leading slash)
             let path = u.pathname;
             if (path.startsWith('/')) path = path.slice(1);
-
             proxyUrl.searchParams.set('path', path);
+            u.searchParams.forEach((v, k) => proxyUrl.searchParams.set(k, v));
 
-            // Forward existing query params
-            u.searchParams.forEach((v, k) => {
-                proxyUrl.searchParams.set(k, v);
-            });
-
-            // ENTERPRISE RETRY LOGIC (3 Attempts for transient failures)
             let attempt = 0;
             const maxAttempts = 3;
 
@@ -76,16 +87,15 @@ const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promis
                 attempt++;
                 try {
                     const res = await fetch(proxyUrl.toString(), requestInit);
-                    // Retry on Gateway errors (502, 504) or timeout simulations
                     if (attempt < maxAttempts && (res.status === 502 || res.status === 504)) {
-                        console.warn(`[customFetch] Retry ${attempt}/${maxAttempts} for status ${res.status}: ${path}`);
+                        console.warn(`[customFetch] Retry ${attempt}/${maxAttempts} (${res.status}): ${path}`);
                         await new Promise(r => setTimeout(r, 500 * attempt));
                         return doFetch();
                     }
                     return res;
                 } catch (err) {
                     if (attempt < maxAttempts) {
-                        console.warn(`[customFetch] Retry ${attempt}/${maxAttempts} for error: ${path}`);
+                        console.warn(`[customFetch] Retry ${attempt}/${maxAttempts} (error): ${path}`);
                         await new Promise(r => setTimeout(r, 500 * attempt));
                         return doFetch();
                     }
@@ -95,21 +105,20 @@ const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promis
 
             return doFetch();
         }
-    } catch (err) {
-        // parsing error or relative URL — pass through
+    } catch {
+        // relative URL or parse error — fall through to native fetch
     }
 
     return fetch(input, requestInit);
 };
 
-// ─── Dashboard client (authenticated) ────────────────────────────────────────
-// Uses sessionStorage so each browser TAB has its own isolated session.
-// This prevents cross-tab contamination: logging in as User B in Tab 2
-// does NOT overwrite User A's session in Tab 1.
-// Trade-off: closing the browser requires re-login (good for security on shared devices).
+// ─── Tenant Dashboard Client ──────────────────────────────────────────────────
+// Scope: all /[storeId]/dashboard/* pages.
+// Storage: sessionStorage → tab-isolated → each tab has its own session.
+// Key: hotelpro-tenant-session
 export const supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, {
     auth: {
-        storageKey: 'hotel-menu-auth-v13',
+        storageKey: TENANT_SESSION_KEY,
         storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
         autoRefreshToken: true,
         persistSession: true,
@@ -118,36 +127,35 @@ export const supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, {
     },
     global: {
         fetch: customFetch,
-        headers: {
-            'X-Client-Info': 'hotel-dashboard/1.0',
-        },
+        headers: { 'X-Client-Info': 'hotelpro-tenant/1.0' },
     },
 });
 
-// ─── Super Admin client (authenticated) ───────────────────────────────────────
-// Used by all /super-admin/* pages and auth flows.
-// Session is persisted in localStorage under a separate key.
+// ─── Super-Admin Client ───────────────────────────────────────────────────────
+// Scope: all /super-admin/* pages only.
+// Storage: localStorage → persists across tabs and page refreshes.
+// Key: hotelpro-admin-session  (different namespace from tenant client)
+//
+// CRITICAL: this client is seeded via setSession() in the login flow after
+// confirming role === 'super_admin'. The super-admin layout exclusively uses
+// SuperAdminAuthContext which watches THIS client — never the tenant client.
 export const supabaseSuperAdmin = createClient(env.supabaseUrl, env.supabaseAnonKey, {
     auth: {
-        storageKey: 'hotel-superadmin-auth-v1',
+        storageKey: ADMIN_SESSION_KEY,
         storage: typeof window !== 'undefined' ? window.localStorage : undefined,
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false, // admin never lands from OAuth redirect on /super-admin
         flowType: 'pkce',
     },
     global: {
         fetch: customFetch,
-        headers: {
-            'X-Client-Info': 'hotel-superadmin/1.0',
-        },
+        headers: { 'X-Client-Info': 'hotelpro-admin/1.0' },
     },
 });
 
-// ─── Customer client (fully anonymous) ───────────────────────────────────────
-// Used only by /customer/* pages.
-// NO session is stored, NO tokens are refreshed, NO URL session detection.
-// Anon key gives access only to public RLS-guarded tables.
+// ─── Customer Client (fully anonymous) ───────────────────────────────────────
+// Scope: /customer/* pages only. No session, purely anon-key access.
 export const supabaseCustomer = createClient(env.supabaseUrl, env.supabaseAnonKey, {
     auth: {
         persistSession: false,
@@ -157,18 +165,18 @@ export const supabaseCustomer = createClient(env.supabaseUrl, env.supabaseAnonKe
     },
     global: {
         fetch: customFetch,
-        headers: {
-            'X-Client-Info': 'hotel-customer/1.0',
-        },
+        headers: { 'X-Client-Info': 'hotelpro-customer/1.0' },
     },
 });
-// ─── Admin Client (Privileged - Service Role) ────────────────────────────────
-// REQUIRED: for administrative tasks where RLS needs to be bypassed.
-// Uses SUPABASE_SERVICE_ROLE_KEY from .env.
-// SECURITY: NEVER use this on the client-side!
+
+// ─── Privileged Admin Client (server-side only) ───────────────────────────────
+// Uses SUPABASE_SERVICE_ROLE_KEY to bypass RLS for administrative tasks.
+// NEVER expose this on the client side.
 export const supabaseAdmin = createClient(
     env.supabaseUrl,
-    (typeof window === 'undefined' ? (process.env.SUPABASE_SERVICE_ROLE_KEY || env.supabaseAnonKey) : env.supabaseAnonKey),
+    (typeof window === 'undefined'
+        ? (process.env.SUPABASE_SERVICE_ROLE_KEY || env.supabaseAnonKey)
+        : env.supabaseAnonKey),
     {
         auth: {
             persistSession: false,

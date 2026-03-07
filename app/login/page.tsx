@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { signInWithEmail, signInWithGoogle, signUpAndCreateTenant } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseSuperAdmin } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
 function GoogleIcon() {
@@ -132,6 +132,15 @@ export default function LoginPage() {
                 if (profileRes.ok) {
                     const { profile } = await profileRes.json();
                     if (profile?.role === 'super_admin') {
+                        // ── Seed the admin-specific Supabase client ────────────────────────────
+                        // Copy the JWT into the admin client (hotelpro-admin-session in
+                        // localStorage). SuperAdminAuthContext watches THIS client via
+                        // onAuthStateChange. Without this, the admin layout could not
+                        // find a session and would loop back to /login.
+                        await supabaseSuperAdmin.auth.setSession({
+                            access_token: signInData.session.access_token,
+                            refresh_token: signInData.session.refresh_token,
+                        });
                         router.replace('/super-admin');
                         return;
                     }

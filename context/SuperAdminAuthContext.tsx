@@ -1,13 +1,34 @@
 'use client';
+
+/**
+ * context/SuperAdminAuthContext.tsx
+ * ──────────────────────────────────
+ * Provides auth state for all /super-admin/* pages.
+ *
+ * Uses the SEPARATE `supabaseSuperAdmin` client which reads from
+ * `hotelpro-admin-session` in localStorage.  This client is seeded
+ * by the login page after confirming role === 'super_admin' via
+ * supabaseSuperAdmin.auth.setSession().
+ *
+ * Isolation guarantee:
+ *   signOut() here calls supabaseSuperAdmin.auth.signOut({ scope: 'local' })
+ *   which removes only `hotelpro-admin-session` from localStorage.
+ *   The tenant client's `hotelpro-tenant-session` in sessionStorage is
+ *   NEVER touched, so any hotel owner logged in another tab is unaffected.
+ */
+
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { supabaseSuperAdmin } from '@/lib/supabase';
+import { supabaseSuperAdmin, ADMIN_SESSION_KEY } from '@/lib/supabase';
 import { securityLog } from '@/lib/logger';
 import type { User, Session } from '@/lib/auth';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SuperAdminAuthState {
     session: Session | null;
     user: User | null;
     loading: boolean;
+    roleLoading: boolean;
     error: string | null;
     userRole: string | null;
 }
@@ -17,49 +38,125 @@ interface SuperAdminAuthContextValue extends SuperAdminAuthState {
     clearError: () => void;
 }
 
+// ─── Context ──────────────────────────────────────────────────────────────────
+
 const SuperAdminAuthContext = createContext<SuperAdminAuthContextValue | null>(null);
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
     const [state, setState] = useState<SuperAdminAuthState>({
         session: null,
         user: null,
         loading: true,
+        roleLoading: false,
         error: null,
         userRole: null,
     });
 
+    const hasInitialized = useRef(false);
+
     useEffect(() => {
         let isActive = true;
-        const { data: { subscription } } = supabaseSuperAdmin.auth.onAuthStateChange(async (event, session) => {
-            if (!session?.user) {
-                if (isActive) {
-                    setState({ session: null, user: null, loading: false, error: null, userRole: null });
+
+        // Safety release: unblock after 3s in case auth hangs
+        const safetyTimer = setTimeout(() => {
+            if (isActive && !hasInitialized.current) {
+                console.warn('[SuperAdminAuth] Safety release triggered');
+                setState(prev => ({ ...prev, loading: false }));
+                hasInitialized.current = true;
+            }
+        }, 3000);
+
+        const { data: { subscription } } = supabaseSuperAdmin.auth.onAuthStateChange(
+            async (event, session) => {
+                console.log(`[SuperAdminAuth] event: ${event}`);
+
+                if (!session?.user) {
+                    if (isActive) {
+                        setState({
+                            session: null, user: null,
+                            loading: false, roleLoading: false,
+                            error: null, userRole: null,
+                        });
+                        hasInitialized.current = true;
+                        clearTimeout(safetyTimer);
+                    }
+                    return;
                 }
-                return;
+
+                // Set session immediately so layout can render
+                if (isActive) {
+                    setState(prev => ({
+                        ...prev,
+                        session,
+                        user: session.user,
+                        loading: false,
+                        roleLoading: true,
+                        error: null,
+                    }));
+                    hasInitialized.current = true;
+                    clearTimeout(safetyTimer);
+                }
+
+                // Fetch role from user_profiles
+                try {
+                    const { data, error } = await supabaseSuperAdmin
+                        .from('user_profiles')
+                        .select('role')
+                        .eq('id', session.user.id)
+                        .maybeSingle();
+
+                    if (isActive) {
+                        setState(prev => ({
+                            ...prev,
+                            roleLoading: false,
+                            userRole: data?.role ?? null,
+                            error: error ? error.message : null,
+                        }));
+
+                        securityLog.info('SUPER_ADMIN_AUTH_RESOLVED', {
+                            userId: session.user.id,
+                            role: data?.role,
+                        });
+                    }
+                } catch (err: any) {
+                    if (isActive) {
+                        setState(prev => ({
+                            ...prev,
+                            roleLoading: false,
+                            error: err.message,
+                        }));
+                    }
+                }
             }
-            // Fetch user role from user_profiles
-            try {
-                const { data, error } = await supabaseSuperAdmin.from('user_profiles').select('role').eq('id', session.user.id).maybeSingle();
-                setState({
-                    session,
-                    user: session.user,
-                    loading: false,
-                    error: error ? error.message : null,
-                    userRole: data?.role || null,
-                });
-            } catch (err: any) {
-                setState(prev => ({ ...prev, loading: false, error: err.message }));
-            }
-        });
+        );
+
         return () => {
             isActive = false;
             subscription.unsubscribe();
+            clearTimeout(safetyTimer);
         };
     }, []);
 
+    /**
+     * signOut — clears ONLY the admin session (hotelpro-admin-session in localStorage).
+     * Does NOT affect the tenant session (hotelpro-tenant-session in sessionStorage).
+     * A hotel-owner logged into a restaurant dashboard in another tab is unaffected.
+     */
     const signOut = async () => {
-        setState({ session: null, user: null, loading: false, error: null, userRole: null });
-        await supabaseSuperAdmin.auth.signOut();
+        setState({
+            session: null, user: null,
+            loading: false, roleLoading: false,
+            error: null, userRole: null,
+        });
+        // scope: 'local' = sign out only this client's session, not server-wide
+        await supabaseSuperAdmin.auth.signOut({ scope: 'local' });
+        // Belt-and-suspenders: manually clear the key
+        if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(ADMIN_SESSION_KEY);
+        }
+        securityLog.info('SUPER_ADMIN_SIGN_OUT', { scope: 'admin' });
     };
 
     const clearError = () => setState(s => ({ ...s, error: null }));
@@ -70,6 +167,8 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
         </SuperAdminAuthContext.Provider>
     );
 }
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSuperAdminAuth() {
     const ctx = useContext(SuperAdminAuthContext);

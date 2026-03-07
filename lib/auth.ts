@@ -10,8 +10,10 @@
  */
 
 import { supabase } from './supabase';
+import { TENANT_SESSION_KEY } from './supabase';
 import { securityLog } from './logger';
 import type { User, Session } from '@supabase/supabase-js';
+
 
 export type { User, Session };
 
@@ -120,25 +122,27 @@ export async function signUpWithEmail(email: string, password: string, fullName:
     return data;
 }
 
-// ─── Sign out ─────────────────────────────────────────────────────────────────
+// ─── Sign out (tenant only — does NOT touch admin session) ────────────────────
 export async function signOut() {
     const { error } = await supabase.auth.signOut({ scope: 'local' });
-    // Also clear localStorage to ensure no stale tokens remain
+    // Clear the tenant sessionStorage bucket explicitly (belt-and-suspenders)
+    // IMPORTANT: we only remove TENANT_SESSION_KEY — the admin localStorage key
+    // is untouched, so a logged-in super-admin in another tab is unaffected.
     if (typeof window !== 'undefined') {
-        localStorage.removeItem('hotel-menu-auth-v13');
+        window.sessionStorage.removeItem(TENANT_SESSION_KEY);
     }
     if (error) {
         securityLog.error('AUTH_LOGOUT', { message: error.message });
         throw error;
     }
-    securityLog.info('AUTH_LOGOUT', {});
+    securityLog.info('AUTH_LOGOUT', { scope: 'tenant' });
 }
 
 // ─── Clear stale session (for refresh token errors) ──────────────────────────
 export function clearStaleSession() {
     if (typeof window !== 'undefined') {
-        localStorage.removeItem('hotel-menu-auth-v13');
-        securityLog.warn('AUTH_STALE_SESSION_CLEARED', {});
+        window.sessionStorage.removeItem(TENANT_SESSION_KEY);
+        securityLog.warn('AUTH_STALE_SESSION_CLEARED', { key: TENANT_SESSION_KEY });
     }
 }
 

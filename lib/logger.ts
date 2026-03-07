@@ -41,7 +41,9 @@ type SecurityEventType =
     | 'AUTH_SIGNUP_FAILURE'
     | 'TENANT_CREATED'
     | 'TENANT_FETCH'
-    | 'AUTH_TENANT_RESOLVED';
+    | 'AUTH_TENANT_RESOLVED'
+    | 'SUPER_ADMIN_AUTH_RESOLVED'
+    | 'SUPER_ADMIN_SIGN_OUT';
 
 interface SecurityEvent {
     event: SecurityEventType;
