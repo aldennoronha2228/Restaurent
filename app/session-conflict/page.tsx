@@ -1,5 +1,8 @@
 'use client';
 
+// This page reads live auth state and URL search params — must never be statically prerendered.
+export const dynamic = 'force-dynamic';
+
 /**
  * Session Conflict Page
  * ─────────────────────
