@@ -244,6 +244,19 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                                         );
                                     })}
                                 </nav>
+
+                                <div className="px-3 pb-4 border-t border-slate-700">
+                                    <button
+                                        onClick={() => {
+                                            setMobileMenuOpen(false);
+                                            handleSignOut();
+                                        }}
+                                        className="w-full mt-3 flex items-center gap-3 px-3 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors"
+                                    >
+                                        <LogOut className="w-5 h-5" />
+                                        <span className="text-sm font-medium">Sign Out</span>
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>

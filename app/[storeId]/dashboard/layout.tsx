@@ -542,9 +542,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             </div>
                                                 <span className="font-semibold text-slate-100 truncate max-w-[170px]" title={displayTenantName}>{displayTenantName}</span>
                                         </div>
-                                            <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                                                <X className="w-5 h-5 text-slate-100" />
-                                        </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => { setMobileMenuOpen(false); handleSignOut(); }}
+                                                    className="px-3 py-1.5 text-xs font-semibold text-rose-100 border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30 rounded-full transition-colors"
+                                                    title="Sign out"
+                                                >
+                                                    Sign Out
+                                                </button>
+                                                <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Close menu">
+                                                    <X className="w-5 h-5 text-slate-100" />
+                                                </button>
+                                            </div>
                                     </div>
                                         <nav className="flex-1 px-3 py-4 space-y-1 premium-sidebar">
                                         {filteredNavigation.map((item) => {
@@ -574,7 +583,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             );
                                         })}
 
+                                        <button
+                                            onClick={() => { setMobileMenuOpen(false); handleSignOut(); }}
+                                            className="w-full text-left"
+                                        >
+                                            <div className="flex items-center gap-3 px-3 py-2.5 rounded-full transition-all duration-200 text-rose-200 hover:bg-rose-500/20 hover:text-rose-100">
+                                                <LogOut className="w-5 h-5 flex-shrink-0" />
+                                                <span className="text-sm font-medium flex-1">Sign Out</span>
+                                            </div>
+                                        </button>
+
                                     </nav>
+
+                                    <div className="px-3 pb-4 premium-sidebar border-t border-white/10">
+                                        <button
+                                            onClick={() => { setMobileMenuOpen(false); handleSignOut(); }}
+                                            className="w-full mt-3 flex items-center gap-3 px-3 py-2.5 rounded-full text-rose-200 hover:bg-rose-500/20 hover:text-rose-100 transition-all"
+                                        >
+                                            <LogOut className="w-5 h-5 flex-shrink-0" />
+                                            <span className="text-sm font-medium">Sign Out</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </motion.div>
                         </motion.div>
@@ -596,6 +625,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <NotificationBell />
                                 <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors" title="Open settings">
                                     <Menu className="w-5 h-5 text-slate-600" />
+                                </button>
+                                <button
+                                    onClick={handleSignOut}
+                                    className="md:hidden p-2 hover:bg-rose-50 rounded-lg transition-colors"
+                                    title="Sign out"
+                                >
+                                    <LogOut className="w-5 h-5 text-rose-600" />
                                 </button>
                                 <div className="relative">
                                     <motion.button

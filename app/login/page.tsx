@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { signInWithEmail, signInWithGoogle, signUpAndCreateTenant } from '@/lib/firebase-auth';
-import { signInWithCredential, GoogleAuthProvider, sendPasswordResetEmail as firebaseSendPasswordResetEmail } from 'firebase/auth';
+import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
@@ -303,17 +303,20 @@ export default function LoginPage() {
         setError(null);
         setInfo(null);
         try {
-            await firebaseSendPasswordResetEmail(tenantAuth, email.trim());
-            setInfo('Password reset email sent. New invited users can use this if they lost the temporary password.');
-        } catch (err: any) {
-            const code = typeof err?.code === 'string' ? err.code : '';
-            if (code.includes('user-not-found')) {
-                setError('No account found with this email.');
-            } else if (code.includes('invalid-email')) {
-                setError('Please enter a valid email address.');
-            } else {
-                setError(err?.message || 'Failed to send reset email. Please try again.');
+            const res = await fetch('/api/auth/password-reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email.trim() }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data?.error || 'Failed to send reset email.');
             }
+
+            setInfo(data?.message || 'If this email exists, a reset link has been sent.');
+        } catch (err: any) {
+            setError(err?.message || 'Failed to send reset email. Please try again.');
         } finally {
             setResetLoading(false);
         }
