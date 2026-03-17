@@ -133,3 +133,94 @@ export async function sendPasswordResetLinkEmail(to: string, resetLink: string):
         return { success: false, error: err instanceof Error ? err.message : 'Failed to send email' };
     }
 }
+
+export async function sendDailyReportEmail(params: {
+    to: string;
+    restaurantName: string;
+    reportDate: string;
+    totalRevenue: number;
+    totalOrders: number;
+    avgOrderValue: number;
+    cancelledOrders: number;
+    busiestHour: number | null;
+    topItems: { name: string; quantity: number; revenue: number }[];
+}): Promise<{ success: boolean; error?: string }> {
+    if (!process.env.RESEND_API_KEY) {
+        console.error('[EMAIL] RESEND_API_KEY not configured');
+        return { success: false, error: 'Email service not configured' };
+    }
+
+    const from = resolveFromEmail();
+    if (!from) {
+        console.error('[EMAIL] RESEND_FROM_EMAIL is required in production');
+        return {
+            success: false,
+            error: 'Email sender not configured. Set RESEND_FROM_EMAIL to a verified domain sender.',
+        };
+    }
+
+    const topItemsHtml = params.topItems.length
+        ? params.topItems
+            .map((item) => `<li style=\"margin: 6px 0;\"><strong>${item.name}</strong> - ${item.quantity} sold (Rs. ${item.revenue.toFixed(2)})</li>`)
+            .join('')
+        : '<li>No items sold</li>';
+
+    const busiestHourText = typeof params.busiestHour === 'number'
+        ? `${String(params.busiestHour).padStart(2, '0')}:00`
+        : 'N/A';
+
+    try {
+        const { error } = await getResendClient().emails.send({
+            from,
+            to: [params.to],
+            subject: `${params.restaurantName} - Daily Report (${params.reportDate})`,
+            html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 680px; margin: 0 auto; padding: 28px 16px; color: #0f172a;">
+                    <h1 style="margin: 0 0 8px;">Daily Hotel Report</h1>
+                    <p style="margin: 0 0 20px; color: #475569;">${params.restaurantName} | Report Date: <strong>${params.reportDate}</strong></p>
+
+                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 12px;">Total Revenue</div>
+                            <div style="font-size: 20px; font-weight: 700;">Rs. ${params.totalRevenue.toFixed(2)}</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 12px;">Total Orders</div>
+                            <div style="font-size: 20px; font-weight: 700;">${params.totalOrders}</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 12px;">Average Order Value</div>
+                            <div style="font-size: 20px; font-weight: 700;">Rs. ${params.avgOrderValue.toFixed(2)}</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 12px;">Cancelled Orders</div>
+                            <div style="font-size: 20px; font-weight: 700;">${params.cancelledOrders}</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+                        <div style="color: #64748b; font-size: 12px;">Busiest Hour</div>
+                        <div style="font-size: 16px; font-weight: 700;">${busiestHourText}</div>
+                    </div>
+
+                    <h2 style="margin: 20px 0 10px; font-size: 16px;">Top Items</h2>
+                    <ul style="padding-left: 18px; margin: 0; color: #334155;">
+                        ${topItemsHtml}
+                    </ul>
+
+                    <p style="margin-top: 24px; color: #64748b; font-size: 12px;">This is an automated report from NexResto.</p>
+                </div>
+            `,
+        });
+
+        if (error) {
+            console.error('[EMAIL] Resend daily-report error:', error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: true };
+    } catch (err) {
+        console.error('[EMAIL] Failed to send daily report email:', err);
+        return { success: false, error: err instanceof Error ? err.message : 'Failed to send email' };
+    }
+}
