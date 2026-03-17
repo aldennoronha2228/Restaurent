@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Search, Edit, Trash2, RefreshCw, AlertCircle, X, Save, Upload, FileSpreadsheet, Download, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
-import { fetchMenuItems, fetchCategories, toggleMenuItemAvailability, deleteMenuItem, createMenuItem, updateMenuItem, createCategory, deleteCategory } from '@/lib/firebase-api';
+import { fetchMenuItems, fetchCategories, toggleMenuItemAvailability, deleteMenuItem, createMenuItem, updateMenuItem } from '@/lib/firebase-api';
 import type { MenuItem, Category } from '@/lib/types';
 import { setItemAvailability, seedAvailabilityMap, applyAvailabilityOverrides } from '@/lib/menuAvailability';
 import { useRestaurant } from '@/hooks/useRestaurant';
@@ -404,8 +404,66 @@ export default function MenuManagementPage() {
 
     const handleSaveCategory = async (name: string) => {
         if (!tenantId || !contextDb) return;
-        await createCategory(tenantId, name, categories.length + 1, contextDb);
+        const activeUser = adminAuth.currentUser || tenantAuth.currentUser;
+        if (!activeUser) throw new Error('Missing active session');
+
+        const idToken = await activeUser.getIdToken(true);
+        const res = await fetch('/api/menu/categories', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ restaurantId: tenantId, name }),
+        });
+        const payload = await res.json();
+        if (!res.ok) {
+            throw new Error(payload?.error || 'Failed to create category');
+        }
         await loadData();
+    };
+
+    const handleDeleteCategory = async (categoryId: string, categoryName: string, categoryItemCount: number) => {
+        if (!tenantId || !contextDb) return;
+        if (categories.length <= 1) {
+            setError('At least one category is required.');
+            return;
+        }
+
+        const confirmMessage = categoryItemCount > 0
+            ? `Delete "${categoryName}"? ${categoryItemCount} item(s) will be moved to another category.`
+            : `Delete "${categoryName}"?`;
+
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            setActionLoading(categoryId);
+            const activeUser = adminAuth.currentUser || tenantAuth.currentUser;
+            if (!activeUser) throw new Error('Missing active session');
+
+            const idToken = await activeUser.getIdToken(true);
+            const res = await fetch(`/api/menu/categories?restaurantId=${encodeURIComponent(tenantId)}&categoryId=${encodeURIComponent(categoryId)}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${idToken}` },
+            });
+
+            const payload = await res.json();
+            if (!res.ok) {
+                throw new Error(payload?.error || 'Failed to delete category');
+            }
+
+            if (selectedCategory === categoryId) {
+                setSelectedCategory('all');
+            }
+
+            await loadData();
+        } catch (err: any) {
+            setError(err?.message || 'Failed to delete category');
+        } finally {
+            setActionLoading(null);
+        }
     };
 
     const categoryList = [
@@ -454,6 +512,19 @@ export default function MenuManagementPage() {
                                             <span className="lg:hidden">{cat.name.split(' ')[0]}</span>
                                             <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium hidden lg:inline', selectedCategory === cat.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600')}>{cat.count}</span>
                                         </motion.button>
+                                        {cat.id !== 'all' && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    void handleDeleteCategory(cat.id, cat.name, cat.count);
+                                                }}
+                                                title={`Delete ${cat.name}`}
+                                                className="ml-1 p-2 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors"
+                                                disabled={actionLoading === cat.id}
+                                            >
+                                                {actionLoading === cat.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>

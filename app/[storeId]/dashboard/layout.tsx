@@ -677,7 +677,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             : `Your subscription ends in ${subscriptionDaysRemaining} day${subscriptionDaysRemaining === 1 ? '' : 's'}.`}
                                     </p>
                                     <p className="text-xs text-amber-700 mt-0.5">
-                                        End date: {subscriptionEndDate}. Please renew before expiry to avoid dashboard interruption.
+                                        End date: {subscriptionEndDate}. Please renew before expiry to keep your plan active.
                                     </p>
                                 </div>
                             </div>
