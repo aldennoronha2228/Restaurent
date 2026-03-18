@@ -164,10 +164,22 @@ export async function getAllRestaurants(
         return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
     };
 
-    const getEffectiveStatus = (rawStatus: any, endDateRaw: any): RestaurantWithOwner['subscription_status'] => {
+    const getEffectiveStatus = (
+        rawStatus: any,
+        endDateRaw: any,
+        startDateRaw?: any
+    ): RestaurantWithOwner['subscription_status'] => {
         const endDate = normalizeDate(endDateRaw);
+        const startDate = normalizeDate(startDateRaw);
+
         if (endDate && endDate < today) return 'expired';
+
         const status = rawStatus || 'active';
+        if (status === 'expired') {
+            if (startDate && startDate > today) return 'trial';
+            return 'active';
+        }
+
         if (status === 'active' || status === 'past_due' || status === 'cancelled' || status === 'trial' || status === 'expired') {
             return status;
         }
@@ -186,7 +198,11 @@ export async function getAllRestaurants(
 
     for (const doc of snap.docs) {
         const data = doc.data();
-        const effectiveStatus = getEffectiveStatus(data.subscription_status, data.subscription_end_date);
+        const effectiveStatus = getEffectiveStatus(
+            data.subscription_status,
+            data.subscription_end_date,
+            data.subscription_start_date
+        );
         const tier = data.subscription_tier || 'starter';
         if (effectiveStatus === 'active') {
             totalRevenue += tierPricing[tier] || 0;
@@ -205,9 +221,9 @@ export async function getAllRestaurants(
             else if (createdAtRaw >= startOfPreviousMonth && createdAtRaw < startOfCurrentMonth) previousMonthSignups += 1;
         }
 
-        if (effectiveStatus === 'expired' && data.subscription_status !== 'expired') {
-            // Keep stored status aligned with date-driven expiry.
-            await doc.ref.update({ subscription_status: 'expired' });
+        if (effectiveStatus !== data.subscription_status) {
+            // Keep stored status aligned with date-driven effective state.
+            await doc.ref.update({ subscription_status: effectiveStatus });
         }
     }
 
@@ -237,7 +253,7 @@ export async function getAllRestaurants(
     if (filters?.status && filters.status !== 'all') {
         filteredDocs = filteredDocs.filter(doc => {
             const d = doc.data();
-            return getEffectiveStatus(d.subscription_status, d.subscription_end_date) === filters.status;
+            return getEffectiveStatus(d.subscription_status, d.subscription_end_date, d.subscription_start_date) === filters.status;
         });
     }
 
@@ -268,7 +284,7 @@ export async function getAllRestaurants(
                 name: d.name || '',
                 owner_name: ownerName,
                 subscription_tier: d.subscription_tier || 'starter',
-                subscription_status: getEffectiveStatus(d.subscription_status, d.subscription_end_date),
+                subscription_status: getEffectiveStatus(d.subscription_status, d.subscription_end_date, d.subscription_start_date),
                 created_at: createdAt,
                 monthly_revenue: d.monthly_revenue || 0,
                 last_report_date: d.last_report_date || null,
@@ -358,10 +374,26 @@ export async function updateSubscriptionDates(
     if (startDate !== undefined) updateData.subscription_start_date = startDate || null;
     if (endDate !== undefined) updateData.subscription_end_date = endDate || null;
 
-    const today = new Date().toISOString().split('T')[0];
-    if (endDate && endDate < today) updateData.subscription_status = 'cancelled';
-    else if (startDate && startDate > today) updateData.subscription_status = 'trial';
-    else if (startDate && startDate <= today && (!endDate || endDate >= today)) updateData.subscription_status = 'active';
+    const today = new Date();
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const parseYmd = (value: string | null): Date | null => {
+        if (!value) return null;
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return null;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+
+    const start = parseYmd(startDate);
+    const end = parseYmd(endDate);
+
+    if (end && end < todayOnly) {
+        updateData.subscription_status = 'expired';
+    } else if (start && start > todayOnly) {
+        updateData.subscription_status = 'trial';
+    } else {
+        // If the end date is today/future (or unset), treat as active regardless of start date presence.
+        updateData.subscription_status = 'active';
+    }
 
     try {
         await adminFirestore.doc(`restaurants/${restaurantId}`).update(updateData);

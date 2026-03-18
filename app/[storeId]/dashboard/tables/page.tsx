@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Download, QrCode, Trash2, Minus, Check, FolderOpen, Save, X, ZoomIn, Share2, Lock, Sparkles, Edit3, Users } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { cn } from '@/lib/utils';
-import { getTables, getDefaultTables, setTables as setSharedTables, type Table } from '@/data/sharedData';
+import { setTables as setSharedTables, type Table } from '@/data/sharedData';
 import { useAuth } from '@/context/AuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { ProFeatureGate, ProBadge } from '@/components/dashboard/ProFeatureGate';
@@ -672,7 +672,7 @@ export default function TablesQRCodesPage() {
         const loadState = async () => {
         setBaseUrl(resolveMenuBaseUrl());
 
-        const defaultSeedTables = getDefaultTables();
+        const defaultSeedTables: Table[] = [];
         const defaultSeedWalls: Wall[] = [];
         const defaultSeedDesks: Desk[] = [];
         const defaultSeedPlans: FloorPlan[] = [{
@@ -726,7 +726,7 @@ export default function TablesQRCodesPage() {
             }
         }
 
-        const resolvedTables = getDefaultTables();
+        const resolvedTables: Table[] = [];
         if (!active) return;
         setTables(resolvedTables);
         setWalls(defaultSeedWalls);

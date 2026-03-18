@@ -102,21 +102,6 @@ export async function POST(request: Request) {
                 restaurant_id: tenantId,
             });
 
-            // Seed default categories
-            const defaultCategories = [
-                { name: 'Appetizers', display_order: 1 },
-                { name: 'Main Course', display_order: 2 },
-                { name: 'Desserts', display_order: 3 },
-                { name: 'Beverages', display_order: 4 },
-            ];
-
-            const batch = adminFirestore.batch();
-            for (const cat of defaultCategories) {
-                const catRef = adminFirestore.collection(`restaurants/${tenantId}/categories`).doc();
-                batch.set(catRef, { ...cat, created_at: FieldValue.serverTimestamp() });
-            }
-            await batch.commit();
-
             // Create default settings
             await adminFirestore.doc(`restaurants/${tenantId}/settings/is_site_public`).set({
                 key: 'is_site_public',

@@ -12,13 +12,6 @@ import { useRestaurant } from '@/hooks/useRestaurant';
 import { RoleGuard } from '@/components/dashboard/RoleGuard';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
 
-const CATEGORY_ICONS: Record<string, string> = {
-    starters: '🥗', mains: '🍽️', 'main course': '🍽️', rice: '🍚', 'rice & breads': '🍚',
-    desserts: '🍰', beverages: '🍹', seafood: '🦞', steaks: '🥩', pasta: '🍝',
-    wine: '🍷', appetizers: '🥗', sides: '🍟',
-};
-function getCategoryIcon(name: string) { return CATEGORY_ICONS[name.toLowerCase()] ?? '🍴'; }
-
 interface ItemFormData { name: string; price: string; category_id: string; type: 'veg' | 'non-veg'; image_url: string; }
 
 interface ImportResult {
@@ -467,8 +460,8 @@ export default function MenuManagementPage() {
     };
 
     const categoryList = [
-        { id: 'all', name: 'All Items', count: items.length, icon: '📋' },
-        ...categories.map(c => ({ id: c.id, name: c.name, count: items.filter(i => i.category_id === c.id).length, icon: getCategoryIcon(c.name) })),
+        { id: 'all', name: 'All Items', count: items.length },
+        ...categories.map(c => ({ id: c.id, name: c.name, count: items.filter(i => i.category_id === c.id).length })),
     ];
 
     if (loading) return (
@@ -507,7 +500,7 @@ export default function MenuManagementPage() {
                                 {categoryList.map(cat => (
                                     <div key={cat.id} className="flex items-center group">
                                         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedCategory(cat.id)} className={cn('flex-1 flex items-center gap-3 px-3 py-2 rounded-2xl text-sm font-medium transition-all whitespace-nowrap lg:w-full', selectedCategory === cat.id ? 'bg-gradient-to-r from-rose-50 to-orange-50 text-rose-600 border border-rose-200/60 shadow-sm' : 'text-slate-600 hover:bg-white/70')}>
-                                            <span className="text-lg lg:text-base">{cat.icon}</span>
+                                            <span className={cn('inline-block w-2.5 h-2.5 rounded-full', selectedCategory === cat.id ? 'bg-rose-500' : 'bg-slate-300')} />
                                             <span className="flex-1 text-left hidden lg:inline">{cat.name}</span>
                                             <span className="lg:hidden">{cat.name.split(' ')[0]}</span>
                                             <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium hidden lg:inline', selectedCategory === cat.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600')}>{cat.count}</span>
@@ -549,7 +542,7 @@ export default function MenuManagementPage() {
                                     <motion.div key={item.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }} whileHover={{ y: -6 }} className={cn('premium-glass rounded-2xl p-5 hover:scale-[1.02] border transition-all', item.available ? 'border-white/40' : 'border-white/30 opacity-60', isDeleting && 'opacity-40')}>
                                         <div className="flex items-start justify-between mb-3">
                                             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-100 to-emerald-50 border border-white/60 flex items-center justify-center overflow-hidden shadow-sm">
-                                                {item.image_url ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-2xl">{getCategoryIcon(catName)}</span>}
+                                                {item.image_url ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-sm font-semibold text-slate-500">{catName.trim().charAt(0).toUpperCase() || 'M'}</span>}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <span title={item.type} className={cn('w-3 h-3 rounded-full border-2', item.type === 'veg' ? 'bg-emerald-500 border-emerald-600' : 'bg-rose-500 border-rose-600')} />
@@ -570,7 +563,7 @@ export default function MenuManagementPage() {
                                 );
                             })}
                         </div>
-                        {filteredItems.length === 0 && <div className="premium-glass p-12 text-center"><p className="text-4xl mb-3">🍽️</p><p className="text-slate-600 font-medium">No menu items found</p><p className="text-slate-500 text-sm mt-1">Try a different category or add your next signature dish.</p></div>}
+                        {filteredItems.length === 0 && <div className="premium-glass p-12 text-center"><div className="mx-auto mb-3 w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center"><Search className="w-5 h-5 text-slate-500" /></div><p className="text-slate-600 font-medium">No menu items found</p><p className="text-slate-500 text-sm mt-1">Try a different category or add your next signature dish.</p></div>}
                     </div>
                 </div>
 
