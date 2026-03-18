@@ -1,46 +1,119 @@
-# HotelPro — Customer Digital Menu
+# NexResto Platform
 
-This is the customer-facing frontend for the Premium Hotel Menu System. It is designed to be accessed via mobile devices when guests scan a table's QR code.
+NexResto is a multi-tenant restaurant platform built with Next.js and Firebase.
 
-## 🚀 Two-Part System architecture
-This repository (`customer-menu` branch) contains the **Customer Menu**.
-The **Admin Dashboard** is located on the `main` branch of this repository.
+It includes:
+- Restaurant dashboard (orders, menu, inventory, analytics, branding)
+- Super admin console (restaurants, subscription status, logs)
+- Customer menu experience with live theming support
+- Firebase-backed authentication and role-based access control
 
-### Customer Menu Features
-- Mobile-first, highly polished UI using Radix UI primitives and complex animations.
-- Dynamic categorization and instant search.
-- Seamless cart management and order placement.
-- Tied directly to table numbers via URL parameters (e.g., `?table=T-01`).
+## Tech Stack
 
-## 🛠️ Tech Stack
-- **Framework:** Next.js 16 (App Router)
-- **UI Components:** shadcn/ui + Radix UI
-- **Styling:** Tailwind CSS + Framer Motion
-- **Database:** Supabase (Used by the dashboard to read/write real-time orders)
+- Framework: Next.js 16 (App Router)
+- Language: TypeScript
+- Styling: Tailwind CSS + motion
+- Auth/DB/Storage: Firebase Auth, Firestore, Firebase Storage
+- Testing: Jest
 
-## 💻 Local Development Setup
+## Core Features
 
-To test the end-to-end QR code flow, this server must be reachable by phones on the same local Wi-Fi network.
+- Multi-tenant restaurant routing by `storeId`
+- Role guards for owner/manager/staff/super-admin
+- Restaurant and admin auth flows
+- Table-aware customer menu + cart + order history
+- Real branding management from dashboard
+- Live customer preview from branding panel
+- Branding persistence in Firestore with collection-first fallback
 
-### 1. Environment Variables
-Create a `.env.local` file in the root of this project:
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-NEXT_PUBLIC_RESTAURANT_ID=rest001
+## Branding System (Latest)
 
-# Set to your machine's LAN IP
-NEXT_PUBLIC_MENU_BASE_URL=http://<YOUR_LAN_IP>:3001
-NEXT_PUBLIC_MENU_CUSTOMER_PATH=/customer
-```
+Branding now uses both:
+- `branding/{restaurantId}` (primary)
+- `restaurants/{restaurantId}.branding` (fallback/mirror)
 
-### 2. Run the Server
-We run this on a separate port (`3001`) so it doesn't conflict with the Admin Dashboard (`3000`), and we bind it to `0.0.0.0` so other devices on the LAN can reach it.
+Implemented capabilities:
+- Primary/secondary/background color settings
+- Font family selection
+- Logo upload
+- Hero image upload
+- Hero overlay opacity
+- Hero headline + tagline
+- Hero visibility toggle
+- Catalog headline + featured images payload support
+- Live preview sync through `postMessage` in preview mode
+
+API routes involved:
+- `GET/POST /api/branding/settings`
+- `POST /api/branding/upload`
+- `GET /api/tenant/branding`
+
+## Local Development
+
+1. Install dependencies:
 
 ```bash
 npm install
-npm run dev -- --port 3001 --hostname 0.0.0.0
 ```
 
-The menu will be accessible locally at `http://localhost:3001/customer` and from phones at `http://<YOUR_LAN_IP>:3001/customer`.
-# Restaurent
+2. Add environment variables in `.env` (or `.env.local`) for:
+- Firebase client config (`NEXT_PUBLIC_FIREBASE_*`)
+- Firebase Admin credentials (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`)
+- Restaurant defaults (`NEXT_PUBLIC_RESTAURANT_ID`)
+- Optional integrations (Resend, Gemini)
+
+3. Run dev server:
+
+```bash
+npm run dev
+```
+
+4. Build production bundle:
+
+```bash
+npm run build
+```
+
+## Tests
+
+Run all tests:
+
+```bash
+npm test
+```
+
+Run security suite:
+
+```bash
+npm run test:security
+```
+
+## Secure Build / Obfuscation
+
+This repo includes optional hardening scripts:
+
+```bash
+npm run build:secure
+```
+
+Related scripts:
+- `npm run obfuscate:build`
+- `npm run verify:obfuscation`
+
+See detailed notes in:
+- `docs/SECURE_BUILD_OBFUSCATION.md`
+
+## Project Structure (High-Level)
+
+- `app/`: App Router pages + API routes
+- `components/`: dashboard/customer/ui components
+- `context/`: auth/cart contexts
+- `lib/`: Firebase, validation, utils, server helpers
+- `scripts/`: admin/debug/maintenance scripts
+- `__tests__/`: test suites
+
+## Notes
+
+- Keep all server secrets out of `NEXT_PUBLIC_*` variables.
+- Rotate any leaked keys immediately and update deployment secrets.
+- For customer preview testing, use `?restaurant=<id>&preview=1` on `/customer`.
