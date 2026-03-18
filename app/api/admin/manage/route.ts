@@ -14,7 +14,7 @@ const TEAM_LIMITS: Record<string, number> = {
 };
 
 // Role badge colors for UI reference
-export const ROLE_COLORS = {
+const ROLE_COLORS = {
     owner: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Owner' },
     manager: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Manager' },
     staff: { bg: 'bg-slate-100', text: 'text-slate-700', label: 'Staff' },

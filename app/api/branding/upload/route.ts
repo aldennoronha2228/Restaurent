@@ -47,6 +47,8 @@ export async function POST(request: NextRequest) {
         const form = await request.formData();
         const restaurantId = sanitizeRestaurantId(form.get('restaurantId'));
         const file = form.get('file');
+        const assetTypeRaw = typeof form.get('assetType') === 'string' ? String(form.get('assetType')) : 'logo';
+        const assetType = assetTypeRaw === 'hero' ? 'hero' : 'logo';
 
         if (!restaurantId) {
             return NextResponse.json({ error: 'Valid restaurantId is required' }, { status: 400 });
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
         const ext = extensionFromMime(file.type);
-        const objectPath = `restaurants/${restaurantId}/branding/logo-${Date.now()}.${ext}`;
+        const objectPath = `restaurants/${restaurantId}/branding/${assetType}-${Date.now()}.${ext}`;
 
         const configuredBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
         const storage = configuredBucket
@@ -90,15 +92,38 @@ export async function POST(request: NextRequest) {
             expires: '01-01-2500',
         });
 
-        await adminFirestore.doc(`restaurants/${restaurantId}`).set({
-            branding: {
-                logoUrl: signedUrl,
-            },
-            logo_url: signedUrl,
-            updated_at: new Date().toISOString(),
-        }, { merge: true });
+        const updatedAt = new Date().toISOString();
 
-        return NextResponse.json({ success: true, logoUrl: signedUrl });
+        if (assetType === 'hero') {
+            await adminFirestore.doc(`restaurants/${restaurantId}`).set({
+                branding: {
+                    heroImageUrl: signedUrl,
+                },
+                updated_at: updatedAt,
+            }, { merge: true });
+
+            await adminFirestore.doc(`branding/${restaurantId}`).set({
+                restaurantId,
+                heroImageUrl: signedUrl,
+                updated_at: updatedAt,
+            }, { merge: true });
+        } else {
+            await adminFirestore.doc(`restaurants/${restaurantId}`).set({
+                branding: {
+                    logoUrl: signedUrl,
+                },
+                logo_url: signedUrl,
+                updated_at: updatedAt,
+            }, { merge: true });
+
+            await adminFirestore.doc(`branding/${restaurantId}`).set({
+                restaurantId,
+                logoUrl: signedUrl,
+                updated_at: updatedAt,
+            }, { merge: true });
+        }
+
+        return NextResponse.json({ success: true, logoUrl: signedUrl, assetType });
     } catch (error: any) {
         return NextResponse.json({ error: error?.message || 'Failed to upload logo' }, { status: 500 });
     }

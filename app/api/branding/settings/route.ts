@@ -10,8 +10,16 @@ type Claims = {
 type BrandingPayload = {
     primaryColor?: unknown;
     secondaryColor?: unknown;
+    backgroundColor?: unknown;
     fontFamily?: unknown;
     logoUrl?: unknown;
+    heroImageUrl?: unknown;
+    heroOverlayOpacity?: unknown;
+    heroHeadline?: unknown;
+    heroTagline?: unknown;
+    showHeroSection?: unknown;
+    catalogHeadline?: unknown;
+    featuredImages?: unknown;
 };
 
 function normalizeHex(value: unknown, fallback: string): string {
@@ -38,6 +46,37 @@ function normalizeLogoUrl(value: unknown): string {
     } catch {
         return '';
     }
+}
+
+function normalizePercent(value: unknown, fallback: number): number {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function normalizeText(value: unknown, max: number, fallback = ''): string {
+    if (typeof value !== 'string') return fallback;
+    const v = value.trim();
+    if (!v) return fallback;
+    return v.slice(0, max);
+}
+
+function normalizeBool(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    return fallback;
+}
+
+function normalizeStringArray(value: unknown, maxItems: number, maxLen: number): string[] {
+    if (!Array.isArray(value)) return [];
+    const out: string[] = [];
+    for (const v of value) {
+        if (typeof v !== 'string') continue;
+        const t = v.trim();
+        if (!t) continue;
+        out.push(t.slice(0, maxLen));
+        if (out.length >= maxItems) break;
+    }
+    return out;
 }
 
 async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: string): Promise<Claims | NextResponse> {
@@ -69,19 +108,36 @@ export async function GET(request: NextRequest) {
         const auth = await requireAuthorizedRestaurant(request, restaurantId);
         if (auth instanceof NextResponse) return auth;
 
-        const snap = await adminFirestore.doc(`restaurants/${restaurantId}`).get();
-        if (!snap.exists) {
+        const [brandingSnap, restaurantSnap] = await Promise.all([
+            adminFirestore.doc(`branding/${restaurantId}`).get(),
+            adminFirestore.doc(`restaurants/${restaurantId}`).get(),
+        ]);
+
+        if (!restaurantSnap.exists && !brandingSnap.exists) {
             return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 });
         }
 
-        const data = snap.data() || {};
-        const branding = (data.branding || {}) as Record<string, unknown>;
+        const brandingDoc = (brandingSnap.data() || {}) as Record<string, unknown>;
+        const restaurant = (restaurantSnap.data() || {}) as Record<string, unknown>;
+        const brandingNested = (restaurant.branding || {}) as Record<string, unknown>;
+        const mergedBranding: Record<string, unknown> = {
+            ...brandingNested,
+            ...brandingDoc,
+        };
 
         return NextResponse.json({
-            primaryColor: normalizeHex(branding.primaryColor, '#3B82F6'),
-            secondaryColor: normalizeHex(branding.secondaryColor, '#6366F1'),
-            fontFamily: normalizeFont(branding.fontFamily),
-            logoUrl: normalizeLogoUrl(branding.logoUrl || data.logo_url || data.logo),
+            primaryColor: normalizeHex(mergedBranding.primaryColor, '#3B82F6'),
+            secondaryColor: normalizeHex(mergedBranding.secondaryColor, '#6366F1'),
+            backgroundColor: normalizeHex(mergedBranding.backgroundColor, '#FDFCF8'),
+            fontFamily: normalizeFont(mergedBranding.fontFamily),
+            logoUrl: normalizeLogoUrl(mergedBranding.logoUrl || restaurant.logo_url || restaurant.logo),
+            heroImageUrl: normalizeLogoUrl(mergedBranding.heroImageUrl),
+            heroOverlayOpacity: normalizePercent(mergedBranding.heroOverlayOpacity, 60),
+            heroHeadline: normalizeText(mergedBranding.heroHeadline, 120, 'Culinary Excellence'),
+            heroTagline: normalizeText(mergedBranding.heroTagline, 220, 'Discover our exquisite menu crafted by world-class chefs'),
+            showHeroSection: normalizeBool(mergedBranding.showHeroSection, true),
+            catalogHeadline: normalizeText(mergedBranding.catalogHeadline, 80, ''),
+            featuredImages: normalizeStringArray(mergedBranding.featuredImages, 8, 500),
         });
     } catch (error: any) {
         return NextResponse.json({ error: error?.message || 'Failed to load branding' }, { status: 500 });
@@ -102,18 +158,43 @@ export async function POST(request: NextRequest) {
 
         const primaryColor = normalizeHex(body.primaryColor, '#3B82F6');
         const secondaryColor = normalizeHex(body.secondaryColor, '#6366F1');
+        const backgroundColor = normalizeHex(body.backgroundColor, '#FDFCF8');
         const fontFamily = normalizeFont(body.fontFamily);
         const logoUrl = normalizeLogoUrl(body.logoUrl);
+        const heroImageUrl = normalizeLogoUrl(body.heroImageUrl);
+        const heroOverlayOpacity = normalizePercent(body.heroOverlayOpacity, 60);
+        const heroHeadline = normalizeText(body.heroHeadline, 120, 'Culinary Excellence');
+        const heroTagline = normalizeText(body.heroTagline, 220, 'Discover our exquisite menu crafted by world-class chefs');
+        const showHeroSection = normalizeBool(body.showHeroSection, true);
+        const catalogHeadline = normalizeText(body.catalogHeadline, 80, '');
+        const featuredImages = normalizeStringArray(body.featuredImages, 8, 500);
+        const updatedAt = new Date().toISOString();
+
+        const brandingPayload = {
+            primaryColor,
+            secondaryColor,
+            backgroundColor,
+            fontFamily,
+            logoUrl,
+            heroImageUrl,
+            heroOverlayOpacity,
+            heroHeadline,
+            heroTagline,
+            showHeroSection,
+            catalogHeadline,
+            featuredImages,
+            updated_at: updatedAt,
+        };
 
         await adminFirestore.doc(`restaurants/${restaurantId}`).set({
-            branding: {
-                primaryColor,
-                secondaryColor,
-                fontFamily,
-                logoUrl,
-            },
+            branding: brandingPayload,
             logo_url: logoUrl || null,
-            updated_at: new Date().toISOString(),
+            updated_at: updatedAt,
+        }, { merge: true });
+
+        await adminFirestore.doc(`branding/${restaurantId}`).set({
+            ...brandingPayload,
+            restaurantId,
         }, { merge: true });
 
         return NextResponse.json({ success: true });

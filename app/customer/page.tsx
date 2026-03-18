@@ -1,13 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ShoppingCart, ChevronUp, Receipt, Loader2 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import type { MenuItem as CartMenuItem } from '@/context/CartContext';
-import { CategoryFilter } from '@/components/customer/CategoryFilter';
-import { MenuItemCard } from '@/components/customer/MenuItemCard';
 import { CartDrawer } from '@/components/customer/CartDrawer';
+import { GourmetCatalogLayout } from '@/components/customer/GourmetCatalogLayout';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { db, tenantAuth, adminAuth } from '@/lib/firebase';
@@ -27,6 +24,58 @@ interface FirestoreItem {
     category_id?: string;
 }
 
+type CustomerBranding = {
+    primaryColor: string;
+    secondaryColor: string;
+    backgroundColor: string;
+    fontFamily: string;
+    logoUrl: string;
+    heroImageUrl: string;
+    heroOverlayOpacity: number;
+    heroHeadline: string;
+    heroTagline: string;
+    showHeroSection: boolean;
+    catalogHeadline: string;
+    featuredImages: string[];
+};
+
+const DEFAULT_BRANDING: CustomerBranding = {
+    primaryColor: '#1B4332',
+    secondaryColor: '#D4AF37',
+    backgroundColor: '#FDFCF8',
+    fontFamily: 'Inter',
+    logoUrl: '',
+    heroImageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600&q=80',
+    heroOverlayOpacity: 60,
+    heroHeadline: 'Culinary Excellence',
+    heroTagline: 'Discover our exquisite menu crafted by world-class chefs',
+    showHeroSection: true,
+    catalogHeadline: '',
+    featuredImages: [],
+};
+
+function normalizeBranding(raw: any): CustomerBranding {
+    const overlay = Number(raw?.heroOverlayOpacity);
+    const featuredImages = Array.isArray(raw?.featuredImages)
+        ? raw.featuredImages.filter((v: unknown) => typeof v === 'string').map((v: string) => v.trim()).filter(Boolean)
+        : [];
+
+    return {
+        primaryColor: typeof raw?.primaryColor === 'string' ? raw.primaryColor : DEFAULT_BRANDING.primaryColor,
+        secondaryColor: typeof raw?.secondaryColor === 'string' ? raw.secondaryColor : DEFAULT_BRANDING.secondaryColor,
+        backgroundColor: typeof raw?.backgroundColor === 'string' ? raw.backgroundColor : DEFAULT_BRANDING.backgroundColor,
+        fontFamily: typeof raw?.fontFamily === 'string' ? raw.fontFamily : DEFAULT_BRANDING.fontFamily,
+        logoUrl: typeof raw?.logoUrl === 'string' ? raw.logoUrl : DEFAULT_BRANDING.logoUrl,
+        heroImageUrl: typeof raw?.heroImageUrl === 'string' && raw.heroImageUrl ? raw.heroImageUrl : DEFAULT_BRANDING.heroImageUrl,
+        heroOverlayOpacity: Number.isFinite(overlay) ? Math.max(0, Math.min(100, overlay)) : DEFAULT_BRANDING.heroOverlayOpacity,
+        heroHeadline: typeof raw?.heroHeadline === 'string' && raw.heroHeadline ? raw.heroHeadline : DEFAULT_BRANDING.heroHeadline,
+        heroTagline: typeof raw?.heroTagline === 'string' && raw.heroTagline ? raw.heroTagline : DEFAULT_BRANDING.heroTagline,
+        showHeroSection: typeof raw?.showHeroSection === 'boolean' ? raw.showHeroSection : DEFAULT_BRANDING.showHeroSection,
+        catalogHeadline: typeof raw?.catalogHeadline === 'string' ? raw.catalogHeadline : DEFAULT_BRANDING.catalogHeadline,
+        featuredImages,
+    };
+}
+
 function toCartItem(f: FirestoreItem, categoryName: string, fallback?: CartMenuItem): CartMenuItem & { available: boolean } {
     return {
         id: f.id,
@@ -41,16 +90,18 @@ function toCartItem(f: FirestoreItem, categoryName: string, fallback?: CartMenuI
 
 function CustomerMenuContent() {
     const [activeCategory, setActiveCategory] = useState('All');
-    const [showScrollTop, setShowScrollTop] = useState(false);
     const [menuItems, setMenuItems] = useState<(CartMenuItem & { available: boolean })[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [retryNonce, setRetryNonce] = useState(0);
-    const { addToCart, setIsCartOpen, totalItems } = useCart();
+    const { addToCart, setIsCartOpen, totalItems, totalPrice } = useCart();
     const router = useRouter();
     const searchParams = useSearchParams();
     const tableId = searchParams.get('table') ?? '';
     const restaurantId = searchParams.get('restaurant') ?? '';
+    const isPreviewMode = searchParams.get('preview') === '1';
+    const [branding, setBranding] = useState<CustomerBranding>(DEFAULT_BRANDING);
+    const [previewBranding, setPreviewBranding] = useState<CustomerBranding | null>(null);
 
     const buildCustomerUrl = (path: string) => {
         const params = new URLSearchParams();
@@ -68,6 +119,44 @@ function CustomerMenuContent() {
             await Promise.allSettled(jobs);
         }
     };
+
+    useEffect(() => {
+        let active = true;
+
+        const loadBranding = async () => {
+            if (!restaurantId) {
+                if (active) setBranding(DEFAULT_BRANDING);
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/tenant/branding?restaurantId=${encodeURIComponent(restaurantId)}`);
+                const payload = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(payload?.error || 'Failed to load branding');
+                if (!active) return;
+                setBranding(normalizeBranding(payload));
+            } catch {
+                if (active) setBranding(DEFAULT_BRANDING);
+            }
+        };
+
+        loadBranding();
+        return () => { active = false; };
+    }, [restaurantId]);
+
+    useEffect(() => {
+        if (!isPreviewMode) return;
+
+        const handler = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) return;
+            const message = event.data;
+            if (!message || message.type !== 'NEXRESTO_BRANDING_PREVIEW') return;
+            setPreviewBranding(normalizeBranding(message.payload || {}));
+        };
+
+        window.addEventListener('message', handler);
+        return () => window.removeEventListener('message', handler);
+    }, [isPreviewMode]);
 
     // Fetch live menu from Firestore; fall back to static data if not configured
     useEffect(() => {
@@ -217,115 +306,34 @@ function CustomerMenuContent() {
         return () => { unsubscribe(); };
     }, [restaurantId]);
 
-    useEffect(() => {
-        const handleScroll = () => setShowScrollTop(window.scrollY > 400);
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
-
     const filteredItems = activeCategory === 'All'
         ? menuItems
         : menuItems.filter(item => item.category === activeCategory);
 
+    const effectiveBranding = previewBranding || branding;
+
     return (
-        <div className="min-h-screen bg-[#FAF8F5]">
-            {/* Header */}
-            <motion.header initial={{ y: -100 }} animate={{ y: 0 }} className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg border-b border-gray-200/50 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 md:px-8 py-4">
-                    <div className="flex items-center justify-between">
-                        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
-                            <h1 className="text-3xl md:text-4xl font-bold text-[#1B4332]">ME<span className="text-[#D4AF37]">NU</span></h1>
-                            <p className="text-sm text-gray-600 mt-1">{tableId ? `Table ${tableId} · Fine Dining Experience` : 'Fine Dining Experience'}</p>
-                        </motion.div>
-                        <div className="flex items-center gap-3">
-                            <motion.button onClick={() => router.push(buildCustomerUrl('/customer/order-history'))} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="bg-white text-[#1B4332] p-4 rounded-2xl shadow-lg hover:shadow-xl transition-all border border-gray-200" title="Order History">
-                                <Receipt className="w-6 h-6" />
-                            </motion.button>
-                            <motion.button onClick={() => setIsCartOpen(true)} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="relative bg-gradient-to-r from-[#1B4332] to-[#2D5F4C] text-white p-4 rounded-2xl shadow-lg hover:shadow-xl transition-all">
-                                <ShoppingCart className="w-6 h-6" />
-                                <AnimatePresence>
-                                    {totalItems > 0 && (
-                                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="absolute -top-2 -right-2 bg-[#D4AF37] text-[#1B4332] w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">
-                                            {totalItems}
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </motion.button>
-                        </div>
-                    </div>
-                </div>
-            </motion.header>
-
-            {/* Hero */}
-            <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="relative h-64 md:h-80 overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600&q=80" alt="Restaurant interior" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
-                <div className="absolute inset-0 flex items-center justify-center text-center">
-                    <div>
-                        <motion.h2 initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.5 }} className="text-4xl md:text-5xl font-bold text-white mb-4">Culinary Excellence</motion.h2>
-                        <motion.p initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.6 }} className="text-white/90 text-lg md:text-xl">Discover our exquisite menu crafted by world-class chefs</motion.p>
-                    </div>
-                </div>
-            </motion.section>
-
-            {/* Category strip */}
-            <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.4 }} className="sticky top-[88px] z-20 bg-[#FAF8F5] py-6 border-b border-gray-200/50">
-                <CategoryFilter categories={categories} activeCategory={activeCategory} onSelectCategory={setActiveCategory} />
-            </motion.div>
-
-            {/* Items grid */}
-            <main className="max-w-7xl mx-auto px-4 md:px-8 py-12">
-                {!loading && !restaurantId && (
-                    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-                        <p className="text-amber-800 text-sm font-medium">Missing restaurant context in this link. Please open the menu by scanning the restaurant QR code again.</p>
-                    </motion.div>
-                )}
-                {loading ? (
-                    <div className="flex flex-col items-center justify-center py-28 gap-4">
-                        <Loader2 className="w-10 h-10 text-[#1B4332] animate-spin" />
-                        <p className="text-gray-500 text-sm">Loading menu…</p>
-                    </div>
-                ) : (
-                    <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-                        <AnimatePresence mode="popLayout">
-                            {filteredItems.map(item => (
-                                <MenuItemCard
-                                    key={item.id}
-                                    item={item}
-                                    available={item.available}
-                                    onAddToCart={item.available ? addToCart : undefined}
-                                />
-                            ))}
-                        </AnimatePresence>
-                    </motion.div>
-                )}
-                {!loading && filteredItems.length === 0 && (
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-20">
-                        <p className="text-gray-500 text-xl">No items in this category</p>
-                    </motion.div>
-                )}
-            </main>
-
+        <div className="min-h-screen">
+            <GourmetCatalogLayout
+                branding={effectiveBranding}
+                categories={categories}
+                activeCategory={activeCategory}
+                items={filteredItems}
+                tableId={tableId}
+                totalItems={totalItems}
+                totalPrice={totalPrice}
+                loading={loading}
+                onBack={() => router.back()}
+                onSearch={() => setIsCartOpen(true)}
+                onFilter={() => setActiveCategory('All')}
+                onSelectCategory={setActiveCategory}
+                onAddToCart={(item) => {
+                    if (item.available) addToCart(item);
+                }}
+                onOpenCart={() => setIsCartOpen(true)}
+                onOpenOrders={() => router.push(buildCustomerUrl('/customer/order-history'))}
+            />
             <CartDrawer tableId={tableId} restaurantId={restaurantId || undefined} />
-
-            {/* Scroll to top */}
-            <AnimatePresence>
-                {showScrollTop && (
-                    <motion.button initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }} onClick={scrollToTop} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="fixed bottom-6 right-6 w-14 h-14 bg-[#D4AF37] text-white rounded-full shadow-lg flex items-center justify-center z-30 hover:shadow-xl transition-all">
-                        <ChevronUp className="w-6 h-6" />
-                    </motion.button>
-                )}
-            </AnimatePresence>
-
-            {/* Mobile cart fab */}
-            <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
-                <motion.button onClick={() => setIsCartOpen(true)} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="bg-gradient-to-r from-[#1B4332] to-[#2D5F4C] text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-3">
-                    <ShoppingCart className="w-5 h-5" /><span className="font-bold">View Cart</span>
-                    {totalItems > 0 && <span className="bg-[#D4AF37] text-[#1B4332] px-3 py-1 rounded-full text-sm font-bold">{totalItems}</span>}
-                </motion.button>
-            </motion.div>
         </div>
     );
 }

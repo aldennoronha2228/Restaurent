@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
-export default function DashboardIndexPage({ params }: { params: { storeId: string } }) {
-    redirect(`/${params.storeId}/dashboard/orders`);
+export default async function DashboardIndexPage({ params }: { params: Promise<{ storeId: string }> }) {
+    const { storeId } = await params;
+    redirect(`/${storeId}/dashboard/orders`);
 }

@@ -5,11 +5,11 @@
  * Allows restaurants to customize their menu colors, logo, and styling
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { 
     Palette, Upload, Eye, Save, RefreshCw,
-    Type, Image, Sparkles
+    Type, Image, Sparkles, SlidersHorizontal
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProFeatureGate } from '@/components/dashboard/ProFeatureGate';
@@ -26,17 +26,41 @@ const colorPresets = [
     { name: 'Slate Gray', primary: '#475569', secondary: '#64748B' },
 ];
 
+type BrandingSettings = {
+    primaryColor: string;
+    secondaryColor: string;
+    fontFamily: string;
+    logoUrl: string;
+    heroImageUrl: string;
+    heroOverlayOpacity: number;
+    heroHeadline: string;
+    heroTagline: string;
+    showHeroSection: boolean;
+};
+
+const DEFAULT_SETTINGS: BrandingSettings = {
+    primaryColor: '#3B82F6',
+    secondaryColor: '#6366F1',
+    fontFamily: 'Inter',
+    logoUrl: '',
+    heroImageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600&q=80',
+    heroOverlayOpacity: 60,
+    heroHeadline: 'Culinary Excellence',
+    heroTagline: 'Discover our exquisite menu crafted by world-class chefs',
+    showHeroSection: true,
+};
+
 function BrandingContent() {
     const { storeId } = useRestaurant();
-    const [primaryColor, setPrimaryColor] = useState('#3B82F6');
-    const [secondaryColor, setSecondaryColor] = useState('#6366F1');
-    const [logoUrl, setLogoUrl] = useState('');
-    const [fontFamily, setFontFamily] = useState('Inter');
+    const [settings, setSettings] = useState<BrandingSettings>(DEFAULT_SETTINGS);
     const [saving, setSaving] = useState(false);
-    const [uploading, setUploading] = useState(false);
+    const [uploadingLogo, setUploadingLogo] = useState(false);
+    const [uploadingHero, setUploadingHero] = useState(false);
     const [loadingSettings, setLoadingSettings] = useState(true);
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const logoInputRef = useRef<HTMLInputElement | null>(null);
+    const heroInputRef = useRef<HTMLInputElement | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
+    const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
     const getActiveToken = async () => {
         if (tenantAuth.currentUser) return tenantAuth.currentUser.getIdToken(true);
@@ -63,10 +87,17 @@ function BrandingContent() {
                 if (!res.ok) throw new Error(payload?.error || 'Failed to load branding settings');
                 if (cancelled) return;
 
-                setPrimaryColor(payload.primaryColor || '#3B82F6');
-                setSecondaryColor(payload.secondaryColor || '#6366F1');
-                setFontFamily(payload.fontFamily || 'Inter');
-                setLogoUrl(payload.logoUrl || '');
+                setSettings({
+                    primaryColor: payload.primaryColor || DEFAULT_SETTINGS.primaryColor,
+                    secondaryColor: payload.secondaryColor || DEFAULT_SETTINGS.secondaryColor,
+                    fontFamily: payload.fontFamily || DEFAULT_SETTINGS.fontFamily,
+                    logoUrl: payload.logoUrl || '',
+                    heroImageUrl: payload.heroImageUrl || DEFAULT_SETTINGS.heroImageUrl,
+                    heroOverlayOpacity: Number.isFinite(payload.heroOverlayOpacity) ? payload.heroOverlayOpacity : DEFAULT_SETTINGS.heroOverlayOpacity,
+                    heroHeadline: payload.heroHeadline || DEFAULT_SETTINGS.heroHeadline,
+                    heroTagline: payload.heroTagline || DEFAULT_SETTINGS.heroTagline,
+                    showHeroSection: typeof payload.showHeroSection === 'boolean' ? payload.showHeroSection : DEFAULT_SETTINGS.showHeroSection,
+                });
             } catch (error: any) {
                 if (!cancelled) {
                     toast.error(error?.message || 'Failed to load branding settings');
@@ -99,10 +130,7 @@ function BrandingContent() {
                 },
                 body: JSON.stringify({
                     restaurantId: storeId,
-                    primaryColor,
-                    secondaryColor,
-                    fontFamily,
-                    logoUrl,
+                    ...settings,
                 }),
             });
 
@@ -116,7 +144,7 @@ function BrandingContent() {
         }
     };
 
-    const handleLogoFile = async (file: File | null) => {
+    const handleAssetUpload = async (file: File | null, assetType: 'logo' | 'hero') => {
         if (!file) return;
         if (!storeId) {
             toast.error('Restaurant context missing');
@@ -134,11 +162,14 @@ function BrandingContent() {
         }
 
         try {
-            setUploading(true);
+            if (assetType === 'logo') setUploadingLogo(true);
+            else setUploadingHero(true);
+
             const token = await getActiveToken();
             const formData = new FormData();
             formData.append('restaurantId', storeId);
             formData.append('file', file);
+            formData.append('assetType', assetType);
 
             const res = await fetch('/api/branding/upload', {
                 method: 'POST',
@@ -149,18 +180,45 @@ function BrandingContent() {
             if (!res.ok) throw new Error(payload?.error || 'Failed to upload logo');
 
             const nextLogoUrl = payload.logoUrl || '';
-            setLogoUrl(nextLogoUrl);
-            toast.success('Logo uploaded');
+            setSettings(prev => ({
+                ...prev,
+                ...(assetType === 'logo' ? { logoUrl: nextLogoUrl } : { heroImageUrl: nextLogoUrl }),
+            }));
+            toast.success(assetType === 'logo' ? 'Logo uploaded' : 'Hero image uploaded');
         } catch (error: any) {
-            toast.error(error?.message || 'Failed to upload logo');
+            toast.error(error?.message || (assetType === 'logo' ? 'Failed to upload logo' : 'Failed to upload hero image'));
         } finally {
-            setUploading(false);
+            if (assetType === 'logo') setUploadingLogo(false);
+            else setUploadingHero(false);
         }
     };
 
     const handlePreview = () => {
         previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
+
+    const handleOpenPreviewMenu = () => {
+        if (!storeId) {
+            toast.error('Restaurant context missing');
+            return;
+        }
+        const href = `/customer?restaurant=${encodeURIComponent(storeId)}&preview=1`;
+        window.open(href, '_blank', 'noopener,noreferrer');
+    };
+
+    const previewPayload = useMemo(() => ({
+        ...settings,
+    }), [settings]);
+
+    const sendPreviewMessage = () => {
+        const frame = iframeRef.current?.contentWindow;
+        if (!frame) return;
+        frame.postMessage({ type: 'NEXRESTO_BRANDING_PREVIEW', payload: previewPayload }, window.location.origin);
+    };
+
+    useEffect(() => {
+        sendPreviewMessage();
+    }, [previewPayload]);
 
     if (loadingSettings) {
         return (
@@ -180,10 +238,11 @@ function BrandingContent() {
                     <p className="text-slate-500 text-sm mt-1">Personalize your restaurant's digital menu appearance</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={handlePreview} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                    <button onClick={handleOpenPreviewMenu} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
                         <Eye className="w-4 h-4" />
-                        Preview
+                        Preview Menu
                     </button>
+                    <button onClick={handlePreview} className="px-3 py-2 text-xs font-medium text-slate-500 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">Jump to Live Panel</button>
                     <motion.button
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
@@ -220,14 +279,14 @@ function BrandingContent() {
                             <div className="flex items-center gap-3">
                                 <input
                                     type="color"
-                                    value={primaryColor}
-                                    onChange={(e) => setPrimaryColor(e.target.value)}
+                                    value={settings.primaryColor}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, primaryColor: e.target.value }))}
                                     className="w-12 h-12 rounded-xl border border-slate-200 cursor-pointer"
                                 />
                                 <input
                                     type="text"
-                                    value={primaryColor}
-                                    onChange={(e) => setPrimaryColor(e.target.value)}
+                                    value={settings.primaryColor}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, primaryColor: e.target.value }))}
                                     className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm uppercase"
                                 />
                             </div>
@@ -238,14 +297,14 @@ function BrandingContent() {
                             <div className="flex items-center gap-3">
                                 <input
                                     type="color"
-                                    value={secondaryColor}
-                                    onChange={(e) => setSecondaryColor(e.target.value)}
+                                    value={settings.secondaryColor}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, secondaryColor: e.target.value }))}
                                     className="w-12 h-12 rounded-xl border border-slate-200 cursor-pointer"
                                 />
                                 <input
                                     type="text"
-                                    value={secondaryColor}
-                                    onChange={(e) => setSecondaryColor(e.target.value)}
+                                    value={settings.secondaryColor}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, secondaryColor: e.target.value }))}
                                     className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm uppercase"
                                 />
                             </div>
@@ -258,8 +317,11 @@ function BrandingContent() {
                                     <button
                                         key={preset.name}
                                         onClick={() => {
-                                            setPrimaryColor(preset.primary);
-                                            setSecondaryColor(preset.secondary);
+                                            setSettings(prev => ({
+                                                ...prev,
+                                                primaryColor: preset.primary,
+                                                secondaryColor: preset.secondary,
+                                            }));
                                         }}
                                         className="flex flex-col items-center gap-2 p-3 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors"
                                     >
@@ -295,33 +357,33 @@ function BrandingContent() {
                         </div>
 
                         <input
-                            ref={fileInputRef}
+                            ref={logoInputRef}
                             type="file"
                             accept="image/png,image/jpeg,image/jpg,image/webp"
                             className="hidden"
                             onChange={(e) => {
-                                void handleLogoFile(e.target.files?.[0] || null);
+                                void handleAssetUpload(e.target.files?.[0] || null, 'logo');
                                 e.currentTarget.value = '';
                             }}
                         />
 
                         <div
                             className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
-                            onClick={() => fileInputRef.current?.click()}
+                            onClick={() => logoInputRef.current?.click()}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={(e) => {
                                 e.preventDefault();
-                                void handleLogoFile(e.dataTransfer.files?.[0] || null);
+                                void handleAssetUpload(e.dataTransfer.files?.[0] || null, 'logo');
                             }}
                         >
-                            {uploading ? (
+                            {uploadingLogo ? (
                                 <>
                                     <RefreshCw className="w-10 h-10 mx-auto text-blue-500 mb-3 animate-spin" />
                                     <p className="text-sm text-slate-600 mb-1">Uploading logo...</p>
                                 </>
-                            ) : logoUrl ? (
+                            ) : settings.logoUrl ? (
                                 <>
-                                    <img src={logoUrl} alt="Restaurant Logo" className="w-24 h-24 mx-auto rounded-xl object-cover border border-slate-200 mb-3" />
+                                    <img src={settings.logoUrl} alt="Restaurant Logo" className="w-24 h-24 mx-auto rounded-xl object-cover border border-slate-200 mb-3" />
                                     <p className="text-sm text-slate-700 mb-1">Logo uploaded. Click to replace</p>
                                 </>
                             ) : (
@@ -331,6 +393,89 @@ function BrandingContent() {
                                 </>
                             )}
                             <p className="text-xs text-slate-400">Recommended: 512x512px</p>
+                        </div>
+                    </div>
+
+                    {/* Hero Section Settings */}
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
+                                <SlidersHorizontal className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-semibold text-slate-900">Hero Section Settings</h2>
+                                <p className="text-sm text-slate-500">Customize customer menu hero image and content</p>
+                            </div>
+                        </div>
+
+                        <input
+                            ref={heroInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg,image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                                void handleAssetUpload(e.target.files?.[0] || null, 'hero');
+                                e.currentTarget.value = '';
+                            }}
+                        />
+
+                        <div
+                            className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center hover:border-blue-400 transition-colors cursor-pointer"
+                            onClick={() => heroInputRef.current?.click()}
+                        >
+                            {uploadingHero ? (
+                                <div className="py-6"><RefreshCw className="w-8 h-8 mx-auto text-blue-500 animate-spin" /></div>
+                            ) : (
+                                <img src={settings.heroImageUrl} alt="Hero" className="w-full h-36 object-cover rounded-lg border border-slate-200" />
+                            )}
+                            <p className="text-xs text-slate-500 mt-3">Click to upload hero image</p>
+                        </div>
+
+                        <div className="mt-4 space-y-4">
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-sm font-medium text-slate-700">Overlay Opacity</label>
+                                    <span className="text-xs text-slate-500">{settings.heroOverlayOpacity}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    value={settings.heroOverlayOpacity}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, heroOverlayOpacity: Number(e.target.value) }))}
+                                    className="w-full"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Headline</label>
+                                <input
+                                    type="text"
+                                    value={settings.heroHeadline}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, heroHeadline: e.target.value.slice(0, 120) }))}
+                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Tagline</label>
+                                <input
+                                    type="text"
+                                    value={settings.heroTagline}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, heroTagline: e.target.value.slice(0, 220) }))}
+                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                />
+                            </div>
+
+                            <label className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+                                <span className="text-sm text-slate-700">Show Hero Section</span>
+                                <input
+                                    type="checkbox"
+                                    checked={settings.showHeroSection}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, showHeroSection: e.target.checked }))}
+                                    className="h-4 w-4"
+                                />
+                            </label>
                         </div>
                     </div>
 
@@ -347,8 +492,8 @@ function BrandingContent() {
                         </div>
 
                         <select
-                            value={fontFamily}
-                            onChange={(e) => setFontFamily(e.target.value)}
+                            value={settings.fontFamily}
+                            onChange={(e) => setSettings(prev => ({ ...prev, fontFamily: e.target.value }))}
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         >
                             <option value="Inter">Inter (Modern)</option>
@@ -360,10 +505,10 @@ function BrandingContent() {
 
                         <div className="mt-4 p-4 bg-slate-50 rounded-xl">
                             <p className="text-xs text-slate-400 mb-2">Preview:</p>
-                            <p className="text-xl font-bold text-slate-900" style={{ fontFamily }}>
+                            <p className="text-xl font-bold text-slate-900" style={{ fontFamily: settings.fontFamily }}>
                                 Your Restaurant Name
                             </p>
-                            <p className="text-sm text-slate-600 mt-1" style={{ fontFamily }}>
+                            <p className="text-sm text-slate-600 mt-1" style={{ fontFamily: settings.fontFamily }}>
                                 Delicious food, unforgettable experience
                             </p>
                         </div>
@@ -384,51 +529,24 @@ function BrandingContent() {
                         <Sparkles className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-semibold text-slate-900">Live Preview</h2>
-                        <p className="text-sm text-slate-500">See how your menu will look to customers</p>
+                        <h2 className="text-lg font-semibold text-slate-900">Live Menu Preview</h2>
+                        <p className="text-sm text-slate-500">Changes sync in real time to customer menu preview</p>
                     </div>
                 </div>
 
-                <div 
-                    className="rounded-xl overflow-hidden"
-                    style={{ backgroundColor: `${primaryColor}10` }}
-                >
-                    <div 
-                        className="h-20 flex items-center justify-center"
-                        style={{ backgroundColor: primaryColor }}
-                    >
-                        <div className="flex items-center gap-3">
-                            {logoUrl ? (
-                                <img src={logoUrl} alt="Brand Logo" className="w-10 h-10 rounded-lg object-cover border border-white/30" />
-                            ) : null}
-                            <h3 className="text-white text-xl font-bold" style={{ fontFamily }}>
-                                Your Restaurant
-                            </h3>
-                        </div>
+                {storeId ? (
+                    <iframe
+                        ref={iframeRef}
+                        title="Customer Menu Preview"
+                        src={`/customer?restaurant=${encodeURIComponent(storeId)}&preview=1`}
+                        onLoad={sendPreviewMessage}
+                        className="w-full h-[760px] rounded-xl border border-slate-200"
+                    />
+                ) : (
+                    <div className="h-48 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-sm text-slate-500">
+                        Restaurant context missing for preview
                     </div>
-                    <div className="p-6 space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-white rounded-xl shadow-sm">
-                            <div>
-                                <p className="font-semibold text-slate-900" style={{ fontFamily }}>Butter Chicken</p>
-                                <p className="text-sm text-slate-500">Creamy tomato-based curry</p>
-                            </div>
-                            <span className="font-bold" style={{ color: primaryColor }}>₹350</span>
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-white rounded-xl shadow-sm">
-                            <div>
-                                <p className="font-semibold text-slate-900" style={{ fontFamily }}>Paneer Tikka</p>
-                                <p className="text-sm text-slate-500">Grilled cottage cheese</p>
-                            </div>
-                            <span className="font-bold" style={{ color: primaryColor }}>₹280</span>
-                        </div>
-                        <button 
-                            className="w-full py-3 rounded-xl text-white font-semibold transition-opacity hover:opacity-90"
-                            style={{ backgroundColor: secondaryColor }}
-                        >
-                            Add to Cart
-                        </button>
-                    </div>
-                </div>
+                )}
             </motion.div>
         </div>
     );
