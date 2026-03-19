@@ -5,13 +5,15 @@ import { motion } from 'motion/react';
 import {
     ArrowLeft,
     ArrowRight,
-    History,
+    Bookmark,
+    CirclePlus,
+    Clock3,
+    Menu,
     Plus,
     Search,
     ShoppingBag,
     SlidersHorizontal,
     User,
-    UtensilsCrossed,
 } from 'lucide-react';
 import type { MenuItem as CartMenuItem } from '@/context/CartContext';
 
@@ -44,14 +46,53 @@ type GourmetCatalogLayoutProps = {
     onOpenOrders: () => void;
 };
 
-function formatPrice(value: number): string {
-    return `$${value.toFixed(2)}`;
+const B64_STRINGS = [
+    'U0VMRUNUSU9O',
+    'Q0hFQ0tPVVQgLT4=',
+    'K0FERCBUTyBTRUxFQ1RJT04=',
+] as const;
+
+function decodeBase64(input: string): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+    let output = '';
+    let i = 0;
+
+    while (i < input.length) {
+        const enc1 = chars.indexOf(input.charAt(i++));
+        const enc2 = chars.indexOf(input.charAt(i++));
+        const enc3 = chars.indexOf(input.charAt(i++));
+        const enc4 = chars.indexOf(input.charAt(i++));
+
+        const chr1 = (enc1 << 2) | (enc2 >> 4);
+        const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+        const chr3 = ((enc3 & 3) << 6) | enc4;
+
+        output += String.fromCharCode(chr1);
+        if (enc3 !== 64) output += String.fromCharCode(chr2);
+        if (enc4 !== 64) output += String.fromCharCode(chr3);
+    }
+
+    return output;
+}
+
+function formatINR(value: number): string {
+    return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        minimumFractionDigits: 2,
+    }).format(value);
 }
 
 function imageFor(index: number, item: CatalogItem | undefined, featuredImages: string[]): string {
     if (featuredImages[index]) return featuredImages[index];
     if (item?.image) return item.image;
-    return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=1000&q=80';
+    return 'https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=1200&q=80';
+}
+
+function shortText(text: string | undefined, max = 92): string {
+    if (!text) return 'Prepared with seasonal ingredients and precise technique.';
+    if (text.length <= max) return text;
+    return `${text.slice(0, max)}...`;
 }
 
 export function GourmetCatalogLayout({
@@ -71,237 +112,230 @@ export function GourmetCatalogLayout({
     onOpenCart,
     onOpenOrders,
 }: GourmetCatalogLayoutProps) {
-    const headline = branding.catalogHeadline || activeCategory || 'Menu';
-    const topCategories = categories.filter((c) => c !== 'All');
+    const heading = (activeCategory && activeCategory !== 'All' ? activeCategory : branding.catalogHeadline || 'Mains').toUpperCase();
+    const categoryStrip = categories.filter((c) => c !== 'All' && c !== activeCategory);
 
-    const first = items[0];
-    const second = items[1];
-    const third = items[2];
-    const fourth = items[3];
+    const featuredItem = items[0];
+    const standardItems = items.slice(1, 5);
+    const listItems = items.slice(5, 12);
+
+    const selectionLabel = decodeBase64(B64_STRINGS[0]);
+    const checkoutLabel = decodeBase64(B64_STRINGS[1]);
+    const addSelectionLabel = decodeBase64(B64_STRINGS[2]);
 
     return (
         <div
-            className="min-h-screen text-slate-700 antialiased"
+            className="min-h-screen bg-[#F8F7F4] text-slate-900 antialiased"
             style={{
                 backgroundColor: branding.backgroundColor,
                 fontFamily: branding.fontFamily,
-                backgroundImage:
-                    "url(\"data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 86c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zm76-52c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zm-3-11c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zM42 73c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zm13 1c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zm22-46c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zM8 55c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zm20-11c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zm0 24c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1zm5-48c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z' fill='%23efede5' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E\")",
             }}
         >
-            <div className="relative min-h-screen max-w-md mx-auto shadow-sm overflow-hidden flex flex-col" style={{ backgroundColor: branding.backgroundColor }}>
-                <header className="sticky top-0 z-50 backdrop-blur-xl px-8 pt-10 pb-6" style={{ backgroundColor: `${branding.backgroundColor}E6` }}>
-                    <div className="flex items-center justify-between mb-8">
+            <div className="mx-auto min-h-screen w-full max-w-md pb-44 md:max-w-3xl md:pb-36">
+                <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/70 px-4 pb-4 pt-5 backdrop-blur-sm md:px-6">
+                    <div className="mb-5 flex items-center justify-between">
                         <button
                             onClick={onBack}
-                            className="w-11 h-11 flex items-center justify-center rounded-full bg-white shadow-sm border border-slate-100"
-                            aria-label="Go back"
+                            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
+                            aria-label="Back"
                         >
-                            <ArrowLeft className="w-5 h-5 text-slate-400" />
+                            <ArrowLeft className="h-5 w-5" />
                         </button>
-                        <div className="flex gap-4">
+                        <div className="flex items-center gap-2">
                             <button
                                 onClick={onSearch}
-                                className="w-11 h-11 flex items-center justify-center rounded-full bg-white shadow-sm border border-slate-100"
+                                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
                                 aria-label="Search"
                             >
-                                <Search className="w-5 h-5 text-slate-400" />
+                                <Search className="h-5 w-5" />
                             </button>
                             <button
                                 onClick={onFilter}
-                                className="w-11 h-11 flex items-center justify-center rounded-full bg-white shadow-sm border border-slate-100"
+                                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
                                 aria-label="Filter"
                             >
-                                <SlidersHorizontal className="w-5 h-5 text-slate-400" />
+                                <SlidersHorizontal className="h-5 w-5" />
                             </button>
                         </div>
                     </div>
 
-                    <h1 className="text-5xl font-extralight tracking-[0.15em] uppercase mb-8 leading-none text-slate-800">
-                        {headline}
-                    </h1>
+                    <div className="space-y-3">
+                        <h1
+                            className="text-[44px] font-black uppercase leading-none tracking-tight text-black md:text-[56px]"
+                            style={{ fontFamily: 'Playfair Display, Georgia, Times New Roman, serif' }}
+                        >
+                            {heading}
+                        </h1>
 
-                    <nav className="flex gap-8 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-                        {topCategories.map((category) => {
-                            const isActive = category === activeCategory;
-                            return (
+                        <div className="flex items-center gap-5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            {categoryStrip.map((category) => (
                                 <button
                                     key={category}
                                     onClick={() => onSelectCategory(category)}
-                                    className={`relative whitespace-nowrap text-xs tracking-[0.1em] uppercase transition-colors duration-500 ${
-                                        isActive ? 'font-bold' : 'font-semibold text-slate-400'
-                                    }`}
-                                    style={{ color: isActive ? branding.primaryColor : undefined }}
+                                    className="whitespace-nowrap text-sm font-semibold uppercase tracking-[0.14em] text-slate-400 transition hover:text-slate-600"
                                 >
                                     {category}
-                                    {isActive ? (
-                                        <span
-                                            className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
-                                            style={{ backgroundColor: branding.primaryColor }}
-                                        />
-                                    ) : null}
                                 </button>
-                            );
-                        })}
-                    </nav>
+                            ))}
+                        </div>
+                    </div>
                 </header>
 
-                <main className="flex-1 px-6 pt-2 pb-32 space-y-8">
+                <main className="space-y-5 px-4 py-5 md:px-6">
                     {loading ? (
-                        <div className="py-20 text-center text-slate-500">Loading menu...</div>
+                        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading menu...</div>
+                    ) : !featuredItem ? (
+                        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">No menu items available.</div>
                     ) : (
                         <>
-                            {first ? (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 12 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="group relative overflow-hidden rounded-2xl bg-white border border-slate-100/50 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.04)]"
-                                >
-                                    <div className="aspect-[16/11] w-full overflow-hidden">
-                                        <img
-                                            src={imageFor(0, first, branding.featuredImages)}
-                                            alt={first.name}
-                                            className="w-full h-full object-cover grayscale-[0.2] transition-transform duration-1000 group-hover:scale-105"
-                                        />
+                            <motion.section
+                                initial={{ opacity: 0, y: 16 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm"
+                            >
+                                <div className="aspect-[16/11] w-full overflow-hidden">
+                                    <img
+                                        src={imageFor(0, featuredItem, branding.featuredImages)}
+                                        alt={featuredItem.name}
+                                        className="h-full w-full object-cover"
+                                    />
+                                </div>
+                                <div className="space-y-3 p-5">
+                                    <div className="flex items-end justify-between gap-3">
+                                        <h2 className="text-2xl font-black tracking-tight text-black" style={{ fontFamily: 'Playfair Display, Georgia, serif' }}>
+                                            {featuredItem.name}
+                                        </h2>
+                                        <p className="text-lg font-black text-black">{formatINR(featuredItem.price)}</p>
                                     </div>
-                                    <div className="p-6">
-                                        <div className="flex justify-between items-baseline mb-2">
-                                            <h3 className="text-lg font-medium text-slate-800">{first.name}</h3>
-                                            <span className="font-medium" style={{ color: branding.primaryColor }}>
-                                                {formatPrice(first.price)}
-                                            </span>
-                                        </div>
-                                        <p className="text-slate-400 text-xs leading-relaxed mb-6 font-light">{first.description || 'Chef-crafted signature dish.'}</p>
-                                        <button
-                                            onClick={() => onAddToCart(first)}
-                                            disabled={!first.available}
-                                            className="w-full py-4 font-bold tracking-widest uppercase rounded-xl text-[10px] flex items-center justify-center gap-2 transition-all duration-700 disabled:opacity-40"
-                                            style={{
-                                                backgroundColor: `${branding.primaryColor}1A`,
-                                                color: branding.primaryColor,
-                                            }}
-                                        >
-                                            <Plus className="w-4 h-4" /> Add to Selection
-                                        </button>
-                                    </div>
-                                </motion.div>
-                            ) : null}
+                                    <p className="text-sm leading-6 text-slate-500">{shortText(featuredItem.description, 160)}</p>
+                                    <button
+                                        onClick={() => onAddToCart(featuredItem)}
+                                        disabled={!featuredItem.available}
+                                        className="w-full rounded-full border border-slate-200 bg-white py-3 text-center text-[11px] font-bold tracking-[0.16em] text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
+                                    >
+                                        {addSelectionLabel}
+                                    </button>
+                                </div>
+                            </motion.section>
 
-                            <div className="grid grid-cols-2 gap-6">
-                                {[second, third].filter(Boolean).map((item, idx) => {
-                                    const safe = item as CatalogItem;
-                                    return (
-                                        <motion.div
-                                            key={safe.id}
-                                            initial={{ opacity: 0, y: 12 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: idx * 0.1 + 0.1 }}
-                                            className="group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-100/50 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.04)]"
-                                        >
-                                            <div className="aspect-square w-full overflow-hidden">
-                                                <img
-                                                    src={imageFor(idx + 1, safe, branding.featuredImages)}
-                                                    alt={safe.name}
-                                                    className="w-full h-full object-cover grayscale-[0.2] transition-transform duration-1000 group-hover:scale-110"
-                                                />
+                            <section className="grid grid-cols-2 gap-3">
+                                {standardItems.map((item, idx) => (
+                                    <motion.article
+                                        key={item.id}
+                                        initial={{ opacity: 0, y: 14 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: idx * 0.04 + 0.1 }}
+                                        className="overflow-hidden rounded-3xl border border-slate-200 bg-white"
+                                    >
+                                        <div className="aspect-[4/5] w-full overflow-hidden">
+                                            <img
+                                                src={imageFor(idx + 1, item, branding.featuredImages)}
+                                                alt={item.name}
+                                                className="h-full w-full object-cover"
+                                            />
+                                        </div>
+                                        <div className="space-y-2 p-3">
+                                            <h3 className="line-clamp-1 text-sm font-bold text-black">{item.name}</h3>
+                                            <p className="line-clamp-2 text-xs text-slate-500">{shortText(item.description, 72)}</p>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-bold text-black">{formatINR(item.price)}</span>
+                                                <button
+                                                    onClick={() => onAddToCart(item)}
+                                                    disabled={!item.available}
+                                                    className="rounded-full border border-slate-200 p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                                    aria-label={`Add ${item.name}`}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </button>
                                             </div>
-                                            <div className="p-4 flex-1 flex flex-col">
-                                                <h3 className="font-medium text-sm mb-1 text-slate-800">{safe.name}</h3>
-                                                <p className="text-[10px] text-slate-400 mb-4 line-clamp-2 leading-relaxed">{safe.description || 'Fresh seasonal ingredients.'}</p>
-                                                <div className="mt-auto flex justify-between items-center">
-                                                    <span className="font-medium text-sm" style={{ color: branding.primaryColor }}>
-                                                        {formatPrice(safe.price)}
-                                                    </span>
-                                                    <button
-                                                        onClick={() => onAddToCart(safe)}
-                                                        disabled={!safe.available}
-                                                        className="p-2 rounded-full transition-all duration-500 disabled:opacity-40"
-                                                        style={{ backgroundColor: `${branding.primaryColor}14`, color: branding.primaryColor }}
-                                                    >
-                                                        <Plus className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </motion.div>
-                                    );
-                                })}
-                            </div>
+                                        </div>
+                                    </motion.article>
+                                ))}
+                            </section>
 
-                            {fourth ? (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 12 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.3 }}
-                                    className="group flex flex-row bg-white rounded-2xl overflow-hidden h-36 border border-slate-100/50 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.04)]"
-                                >
-                                    <div className="w-2/5 overflow-hidden">
+                            <section className="space-y-3">
+                                {listItems.map((item, idx) => (
+                                    <motion.article
+                                        key={item.id}
+                                        initial={{ opacity: 0, y: 12 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: idx * 0.04 + 0.2 }}
+                                        className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3"
+                                    >
                                         <img
-                                            src={imageFor(3, fourth, branding.featuredImages)}
-                                            alt={fourth.name}
-                                            className="w-full h-full object-cover grayscale-[0.2] transition-transform duration-1000 group-hover:scale-110"
+                                            src={imageFor(idx + 5, item, branding.featuredImages)}
+                                            alt={item.name}
+                                            className="h-20 w-20 rounded-xl object-cover"
                                         />
-                                    </div>
-                                    <div className="w-3/5 p-6 flex flex-col justify-center">
-                                        <div className="flex justify-between items-center mb-1 gap-2">
-                                            <h3 className="font-medium text-slate-800 line-clamp-1">{fourth.name}</h3>
-                                            <span className="font-medium" style={{ color: branding.primaryColor }}>
-                                                {formatPrice(fourth.price)}
-                                            </span>
+                                        <div className="min-w-0 flex-1">
+                                            <h4 className="truncate text-sm font-bold text-black">{item.name}</h4>
+                                            <p className="line-clamp-2 text-xs text-slate-500">{shortText(item.description, 68)}</p>
                                         </div>
-                                        <p className="text-[10px] text-slate-400 mb-4 leading-relaxed line-clamp-2">{fourth.description || 'Slow-cooked to perfection.'}</p>
-                                        <div className="flex gap-2">
-                                            <span className="px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 text-[8px] uppercase font-bold tracking-widest border border-slate-100">Chef</span>
-                                            <span className="px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 text-[8px] uppercase font-bold tracking-widest border border-slate-100">Featured</span>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <p className="text-sm font-bold text-black">{formatINR(item.price)}</p>
+                                            <button
+                                                onClick={() => onAddToCart(item)}
+                                                disabled={!item.available}
+                                                className="rounded-full border border-slate-200 p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                                aria-label={`Add ${item.name}`}
+                                            >
+                                                <CirclePlus className="h-4 w-4" />
+                                            </button>
                                         </div>
-                                    </div>
-                                </motion.div>
-                            ) : null}
+                                    </motion.article>
+                                ))}
+                            </section>
                         </>
                     )}
                 </main>
 
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-md px-6 pointer-events-none z-40">
-                    <div className="pointer-events-auto backdrop-blur-md text-white rounded-2xl p-4 shadow-2xl flex items-center justify-between border border-white/10" style={{ backgroundColor: '#1f2937f2' }}>
-                        <div className="flex items-center gap-4 pl-2">
-                            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-                                <ShoppingBag className="w-5 h-5" />
+                {totalItems > 0 ? (
+                    <div className="fixed inset-x-0 bottom-20 z-50 px-4 md:bottom-24 md:px-6">
+                        <div className="mx-auto flex w-full max-w-md items-center justify-between rounded-full bg-[#232528]/90 px-3 py-2 text-white shadow-xl backdrop-blur-sm md:max-w-3xl">
+                            <div className="flex items-center gap-2.5 pl-2">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10">
+                                    <ShoppingBag className="h-4.5 w-4.5" />
+                                </div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em]">
+                                    {selectionLabel} {formatINR(totalPrice)}
+                                </p>
                             </div>
-                            <div>
-                                <p className="text-[9px] opacity-60 font-semibold uppercase tracking-[0.2em]">Selection</p>
-                                <p className="text-base font-bold tracking-tight">{formatPrice(totalPrice)}</p>
-                            </div>
+
+                            <button
+                                onClick={onOpenCart}
+                                className="inline-flex items-center gap-1 rounded-full bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-900"
+                            >
+                                {checkoutLabel}
+                                <ArrowRight className="h-3.5 w-3.5" />
+                            </button>
                         </div>
-                        <button
-                            onClick={onOpenCart}
-                            className="bg-white text-slate-800 px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-slate-100 transition-colors"
-                        >
-                            Checkout <ArrowRight className="w-3 h-3" />
+                    </div>
+                ) : null}
+
+                <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200/80 bg-white/80 px-4 py-3 backdrop-blur-sm md:px-6">
+                    <div className="mx-auto grid w-full max-w-md grid-cols-4 md:max-w-3xl">
+                        <button className="flex flex-col items-center gap-1 text-slate-700" aria-label="Menu">
+                            <Menu className="h-5 w-5" />
+                            <span className="text-[10px] font-semibold">Menu</span>
+                        </button>
+                        <button className="flex flex-col items-center gap-1 text-slate-400" aria-label="Saved">
+                            <Bookmark className="h-5 w-5" />
+                            <span className="text-[10px] font-semibold">Saved</span>
+                        </button>
+                        <button onClick={onOpenOrders} className="flex flex-col items-center gap-1 text-slate-500" aria-label="Orders">
+                            <Clock3 className="h-5 w-5" />
+                            <span className="text-[10px] font-semibold">Orders</span>
+                        </button>
+                        <button className="flex flex-col items-center gap-1 text-slate-400" aria-label="Profile">
+                            <User className="h-5 w-5" />
+                            <span className="text-[10px] font-semibold">Profile</span>
                         </button>
                     </div>
-                </div>
-
-                <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/90 backdrop-blur-xl flex justify-around items-center py-6 border-t border-slate-100 z-50">
-                    <button className="flex flex-col items-center gap-2" style={{ color: branding.primaryColor }}>
-                        <UtensilsCrossed className="w-5 h-5" />
-                        <span className="text-[8px] font-bold uppercase tracking-[0.2em]">Menu</span>
-                    </button>
-                    <button className="flex flex-col items-center gap-2 text-slate-300">
-                        <ShoppingBag className="w-5 h-5" />
-                        <span className="text-[8px] font-bold uppercase tracking-[0.2em]">Saved</span>
-                    </button>
-                    <button onClick={onOpenOrders} className="flex flex-col items-center gap-2 text-slate-300 hover:transition-colors" style={{ color: totalItems > 0 ? branding.secondaryColor : undefined }}>
-                        <History className="w-5 h-5" />
-                        <span className="text-[8px] font-bold uppercase tracking-[0.2em]">Orders</span>
-                    </button>
-                    <button className="flex flex-col items-center gap-2 text-slate-300">
-                        <User className="w-5 h-5" />
-                        <span className="text-[8px] font-bold uppercase tracking-[0.2em]">Profile</span>
-                    </button>
                 </nav>
 
                 {!tableId ? (
-                    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-[10px] font-semibold text-amber-700 uppercase tracking-[0.12em]">
-                        No table linked
+                    <div className="fixed left-1/2 top-2 z-50 -translate-x-1/2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                        Table not linked
                     </div>
                 ) : null}
             </div>

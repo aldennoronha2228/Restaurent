@@ -34,6 +34,25 @@ function daysUntilYmd(endDateYmd: string): number {
     return Math.round((endDate.getTime() - today.getTime()) / 86400000);
 }
 
+function isAuthNetworkError(err: unknown): boolean {
+    const code = (err as { code?: unknown } | null)?.code;
+    return typeof code === 'string' && code === 'auth/network-request-failed';
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function getIdTokenWithRetry(user: User): Promise<string> {
+    try {
+        return await user.getIdToken();
+    } catch (err) {
+        if (!isAuthNetworkError(err)) throw err;
+        await sleep(350);
+        return user.getIdToken();
+    }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AuthState {
@@ -296,73 +315,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Firebase's onAuthStateChanged replaces Supabase's onAuthStateChange
         const unsubscribe = onAuthStateChanged(tenantAuth, async (user) => {
-            console.log(`[AuthContext] Firebase auth state changed: ${user ? 'signed in' : 'signed out'}`);
+            try {
+                console.log(`[AuthContext] Firebase auth state changed: ${user ? 'signed in' : 'signed out'}`);
 
-            if (!user) {
+                if (!user) {
+                    if (isActive) {
+                        hasTenantRef.current = false;
+                        resolvedUidRef.current = null;
+                        setState({
+                            session: null,
+                            user: null,
+                            isAdmin: false,
+                            userRole: null,
+                            tenantId: null,
+                            tenantName: null,
+                            subscriptionTier: null,
+                            subscriptionStatus: null,
+                            subscriptionEndDate: null,
+                            subscriptionDaysRemaining: null,
+                            isImpersonating: false,
+                            mustChangePassword: false,
+                            loading: false,
+                            tenantLoading: false,
+                            error: null,
+                        });
+                        hasInitialized.current = true;
+                        clearTimeout(safetyTimer);
+                    }
+                    return;
+                }
+
+                let idToken = '';
+                try {
+                    idToken = await getIdTokenWithRetry(user);
+                } catch (err) {
+                    if (!isAuthNetworkError(err)) throw err;
+                    console.warn('[AuthContext] Token fetch failed due to network; continuing with reduced session token.');
+                }
+
+                const isSameResolvedUser = resolvedUidRef.current === user.uid;
+
+                // Progressive load — set session, but keep loading true if we need profile
                 if (isActive) {
-                    hasTenantRef.current = false;
-                    resolvedUidRef.current = null;
-                    setState({
-                        session: null,
-                        user: null,
-                        isAdmin: false,
-                        userRole: null,
-                        tenantId: null,
-                        tenantName: null,
-                        subscriptionTier: null,
-                        subscriptionStatus: null,
-                        subscriptionEndDate: null,
-                        subscriptionDaysRemaining: null,
-                        isImpersonating: false,
-                        mustChangePassword: false,
-                        loading: false,
-                        tenantLoading: false,
+                    setState(prev => ({
+                        ...prev,
+                        session: idToken
+                            ? { user, access_token: idToken }
+                            : (prev.session?.user?.uid === user.uid ? prev.session : { user, access_token: '' }),
+                        user,
+                        loading: hasTenantRef.current && isSameResolvedUser ? false : true,
+                        tenantLoading: hasTenantRef.current && isSameResolvedUser ? false : true,
+                        userRole: isSameResolvedUser ? prev.userRole : null,
+                        tenantId: isSameResolvedUser ? prev.tenantId : null,
+                        tenantName: isSameResolvedUser ? prev.tenantName : null,
+                        subscriptionTier: isSameResolvedUser ? prev.subscriptionTier : null,
+                        subscriptionStatus: isSameResolvedUser ? prev.subscriptionStatus : null,
+                        subscriptionEndDate: isSameResolvedUser ? prev.subscriptionEndDate : null,
+                        subscriptionDaysRemaining: isSameResolvedUser ? prev.subscriptionDaysRemaining : null,
+                        isImpersonating: isSameResolvedUser ? prev.isImpersonating : false,
+                        mustChangePassword: isSameResolvedUser ? prev.mustChangePassword : false,
                         error: null,
-                    });
+                    }));
                     hasInitialized.current = true;
                     clearTimeout(safetyTimer);
                 }
-                return;
-            }
 
-            // Get ID token for session object
-            const idToken = await user.getIdToken();
-            const isSameResolvedUser = resolvedUidRef.current === user.uid;
+                // Skip re-fetching tenant if we already have it
+                if (hasTenantRef.current && isSameResolvedUser) {
+                    console.log('[AuthContext] Skipping profile re-fetch - tenant data exists');
+                    setState(prev => ({ ...prev, tenantLoading: false }));
+                    return;
+                }
 
-            // Progressive load — set session, but keep loading true if we need profile
-            if (isActive) {
-                setState(prev => ({
-                    ...prev,
-                    session: { user, access_token: idToken },
-                    user,
-                    loading: hasTenantRef.current && isSameResolvedUser ? false : true,
-                    tenantLoading: hasTenantRef.current && isSameResolvedUser ? false : true,
-                    userRole: isSameResolvedUser ? prev.userRole : null,
-                    tenantId: isSameResolvedUser ? prev.tenantId : null,
-                    tenantName: isSameResolvedUser ? prev.tenantName : null,
-                    subscriptionTier: isSameResolvedUser ? prev.subscriptionTier : null,
-                    subscriptionStatus: isSameResolvedUser ? prev.subscriptionStatus : null,
-                    subscriptionEndDate: isSameResolvedUser ? prev.subscriptionEndDate : null,
-                    subscriptionDaysRemaining: isSameResolvedUser ? prev.subscriptionDaysRemaining : null,
-                    isImpersonating: isSameResolvedUser ? prev.isImpersonating : false,
-                    mustChangePassword: isSameResolvedUser ? prev.mustChangePassword : false,
-                    error: null,
-                }));
-                hasInitialized.current = true;
-                clearTimeout(safetyTimer);
-            }
+                if (!isActive) return;
 
-            // Skip re-fetching tenant if we already have it
-            if (hasTenantRef.current && isSameResolvedUser) {
-                console.log('[AuthContext] Skipping profile re-fetch - tenant data exists');
-                setState(prev => ({ ...prev, tenantLoading: false }));
-                return;
-            }
-
-            if (!isActive) return;
-
-            // Resolve admin + tenant
-            try {
+                // Resolve admin + tenant
                 const profile = await fetchUserProfile(user);
                 const tokenResult = await user.getIdTokenResult();
                 const isAdmin = tokenResult.claims.role === 'super_admin';
@@ -398,7 +425,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     });
                 }
             } catch (err: any) {
-                console.error('[AuthContext] Background check error:', err);
+                console.error('[AuthContext] Auth state handler error:', err);
                 if (isActive) {
                     setState(prev => ({ ...prev, loading: false, tenantLoading: false }));
                 }

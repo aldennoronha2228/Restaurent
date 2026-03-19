@@ -59,6 +59,16 @@ function mapFirestoreOrder(id: string, data: any): DashboardOrder {
     };
 }
 
+function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+    const out: Partial<T> = {};
+    for (const [key, value] of Object.entries(obj)) {
+        if (value !== undefined) {
+            (out as Record<string, unknown>)[key] = value;
+        }
+    }
+    return out;
+}
+
 async function refreshAnyActiveToken(): Promise<void> {
     const jobs: Promise<unknown>[] = [];
     if (tenantAuth.currentUser) jobs.push(tenantAuth.currentUser.getIdToken(true));
@@ -254,7 +264,7 @@ export async function createMenuItem(
 
     const menuRef = collection(db, 'restaurants', tenantId, 'menu_items');
     const docRef = await addDoc(menuRef, {
-        ...item,
+        ...stripUndefined(item),
         category_name: categoryName,
         available: true,
         created_at: serverTimestamp(),
@@ -276,7 +286,10 @@ export async function updateMenuItem(
     db: Firestore = defaultDb
 ): Promise<void> {
     const itemRef = doc(db, 'restaurants', tenantId, 'menu_items', itemId);
-    await updateDoc(itemRef, { ...updates, updated_at: serverTimestamp() });
+    await updateDoc(itemRef, {
+        ...stripUndefined(updates as Record<string, unknown>),
+        updated_at: serverTimestamp(),
+    });
 }
 
 // ─── CATEGORIES ─────────────────────────────────────────────────────────────

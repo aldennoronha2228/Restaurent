@@ -5,6 +5,12 @@ import { motion } from 'motion/react';
 import { ShoppingCart, Ban } from 'lucide-react';
 import type { MenuItem } from '@/context/CartContext';
 
+const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+}).format(value);
+
 interface MenuItemCardProps {
     item: MenuItem;
     available?: boolean;          // defaults to true
@@ -42,7 +48,7 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
 
                 {/* Price badge */}
                 <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg">
-                    <span className="text-[#1B4332] font-bold text-sm">${item.price.toFixed(2)}</span>
+                    <span className="text-[#1B4332] font-bold text-sm">{formatINR(item.price)}</span>
                 </div>
 
                 {/* Out of Stock overlay */}

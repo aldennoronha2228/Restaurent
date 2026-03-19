@@ -7,6 +7,12 @@ import { useCart } from '@/context/CartContext';
 import { QuantitySelector } from '@/components/customer/QuantitySelector';
 import { useRouter } from 'next/navigation';
 
+const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+}).format(value);
+
 export const CartDrawer: React.FC<{ tableId?: string; restaurantId?: string }> = ({ tableId = '', restaurantId }) => {
     const { cart, isCartOpen, setIsCartOpen, totalPrice, updateQuantity, removeFromCart } = useCart();
     const router = useRouter();
@@ -53,7 +59,7 @@ export const CartDrawer: React.FC<{ tableId?: string; restaurantId?: string }> =
                                                 <img src={item.image} alt={item.name} className="w-20 h-20 rounded-xl object-cover" />
                                                 <div className="flex-1">
                                                     <h3 className="font-bold text-[#1B4332] mb-1">{item.name}</h3>
-                                                    <p className="text-[#D4AF37] font-semibold mb-2">${item.price.toFixed(2)}</p>
+                                                    <p className="text-[#D4AF37] font-semibold mb-2">{formatINR(item.price)}</p>
                                                     <QuantitySelector quantity={item.quantity} onIncrease={() => updateQuantity(item.id, item.quantity + 1)} onDecrease={() => updateQuantity(item.id, item.quantity - 1)} />
                                                 </div>
                                                 <motion.button onClick={() => removeFromCart(item.id)} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors">
@@ -61,7 +67,7 @@ export const CartDrawer: React.FC<{ tableId?: string; restaurantId?: string }> =
                                                 </motion.button>
                                             </div>
                                             <div className="mt-3 pt-3 border-t border-[#1B4332]/10 flex justify-between items-center">
-                                                <span className="text-sm text-gray-600">Subtotal:</span><span className="font-bold text-[#1B4332]">${(item.price * item.quantity).toFixed(2)}</span>
+                                                <span className="text-sm text-gray-600">Subtotal:</span><span className="font-bold text-[#1B4332]">{formatINR(item.price * item.quantity)}</span>
                                             </div>
                                         </motion.div>
                                     ))
@@ -72,7 +78,7 @@ export const CartDrawer: React.FC<{ tableId?: string; restaurantId?: string }> =
                             <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="border-t border-gray-200 p-6 space-y-4 bg-white">
                                 <div className="flex justify-between items-center text-lg mb-2">
                                     <span className="font-semibold text-gray-700">Total:</span>
-                                    <motion.span key={totalPrice} initial={{ scale: 1.2, color: '#D4AF37' }} animate={{ scale: 1, color: '#1B4332' }} className="font-bold text-2xl">${totalPrice.toFixed(2)}</motion.span>
+                                    <motion.span key={totalPrice} initial={{ scale: 1.2, color: '#D4AF37' }} animate={{ scale: 1, color: '#1B4332' }} className="font-bold text-2xl">{formatINR(totalPrice)}</motion.span>
                                 </div>
                                 <div className="flex items-center gap-3 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-200">
                                     <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Table #</label>

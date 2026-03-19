@@ -7,6 +7,12 @@ import { useCart } from '@/context/CartContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
+const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+}).format(value);
+
 function CustomerOrderHistoryContent() {
     const { orderHistory } = useCart();
     const router = useRouter();
@@ -55,7 +61,7 @@ function CustomerOrderHistoryContent() {
                                         <div className="text-left"><p className="font-bold text-[#1B4332] text-lg">Order #{order.orderNumber}</p><p className="text-sm text-gray-600">{order.date} · {order.time}</p></div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <div className="text-right"><p className="font-bold text-[#1B4332] text-lg">${order.totalPrice.toFixed(2)}</p><p className="text-sm text-gray-600">{order.items.reduce((sum, item) => sum + item.quantity, 0)} items</p></div>
+                                        <div className="text-right"><p className="font-bold text-[#1B4332] text-lg">{formatINR(order.totalPrice)}</p><p className="text-sm text-gray-600">{order.items.reduce((sum, item) => sum + item.quantity, 0)} items</p></div>
                                         {expandedOrder === order.id ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                                     </div>
                                 </button>
@@ -64,13 +70,13 @@ function CustomerOrderHistoryContent() {
                                         {order.items.map((item) => (
                                             <div key={item.id} className="flex items-center gap-4">
                                                 <img src={item.image} alt={item.name} className="w-16 h-16 rounded-xl object-cover" />
-                                                <div className="flex-1"><p className="font-semibold text-[#1B4332]">{item.name}</p><p className="text-sm text-gray-600">${item.price.toFixed(2)} × {item.quantity}</p></div>
-                                                <p className="font-bold text-[#1B4332]">${(item.price * item.quantity).toFixed(2)}</p>
+                                                <div className="flex-1"><p className="font-semibold text-[#1B4332]">{item.name}</p><p className="text-sm text-gray-600">{formatINR(item.price)} × {item.quantity}</p></div>
+                                                <p className="font-bold text-[#1B4332]">{formatINR(item.price * item.quantity)}</p>
                                             </div>
                                         ))}
                                         <div className="pt-4 border-t border-gray-300 flex justify-between items-center">
                                             <span className="font-semibold text-gray-700">Total</span>
-                                            <span className="font-bold text-xl text-[#1B4332]">${order.totalPrice.toFixed(2)}</span>
+                                            <span className="font-bold text-xl text-[#1B4332]">{formatINR(order.totalPrice)}</span>
                                         </div>
                                     </motion.div>
                                 )}

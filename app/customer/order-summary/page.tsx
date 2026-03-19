@@ -8,6 +8,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { submitOrderToFirestore } from '@/lib/firebase-submit-order';
 import { Suspense } from 'react';
 
+const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+}).format(value);
+
 function OrderSummaryContent() {
     const { cart, totalPrice, clearCart, totalItems } = useCart();
     const router = useRouter();
@@ -152,18 +158,18 @@ function OrderSummaryContent() {
                                                 <p className="font-semibold text-[#1B4332]">{item.name}</p>
                                                 <p className="text-sm text-gray-500">× {item.quantity}</p>
                                             </div>
-                                            <p className="font-bold text-[#1B4332]">${(item.price * item.quantity).toFixed(2)}</p>
+                                            <p className="font-bold text-[#1B4332]">{formatINR(item.price * item.quantity)}</p>
                                         </motion.div>
                                     )) : (
                                         <p className="text-gray-500 text-sm text-center py-4">Order submitted successfully</p>
                                     )}
                                 </div>
                                 <div className="pt-4 border-t-2 border-[#D4AF37]/30 space-y-2">
-                                    <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal</span><span className="font-semibold">${receiptTotal.toFixed(2)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-gray-600">Service Fee</span><span className="font-semibold">$5.00</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal</span><span className="font-semibold">{formatINR(receiptTotal)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-gray-600">Service Fee</span><span className="font-semibold">{formatINR(5)}</span></div>
                                     <div className="flex justify-between text-lg pt-2 border-t border-gray-200">
                                         <span className="font-bold text-[#1B4332]">Total</span>
-                                        <span className="font-bold text-[#1B4332]">${(receiptTotal + 5).toFixed(2)}</span>
+                                        <span className="font-bold text-[#1B4332]">{formatINR(receiptTotal + 5)}</span>
                                     </div>
                                 </div>
                             </motion.div>

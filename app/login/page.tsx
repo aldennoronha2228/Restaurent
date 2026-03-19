@@ -372,7 +372,6 @@ export default function LoginPage() {
             <div className="relative z-10 w-full max-w-md px-4">
                 <motion.div initial={{ opacity: 0, y: 32, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
                     <div className="bg-slate-900/85 sm:bg-slate-900/80 backdrop-blur-md sm:backdrop-blur-2xl border border-slate-700/50 rounded-3xl shadow-2xl overflow-hidden">
-                        <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-600" />
                         <div className="p-8">
                             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="flex flex-col items-center mb-8">
                                 <div className="w-16 h-16 rounded-2xl bg-slate-800/70 border border-slate-700/70 flex items-center justify-center mb-4 shadow-lg shadow-blue-500/20">
