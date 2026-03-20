@@ -107,7 +107,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                     {/* Logo */}
                     <div className="h-16 flex items-center px-6 border-b border-slate-700">
                         <motion.div initial={false} animate={{ opacity: collapsed ? 0 : 1 }} className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                            <div className="w-10 h-10 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center shadow-lg shadow-amber-500/30">
                                 <NexRestoLogo className="w-7 h-7" priority />
                             </div>
                             {!collapsed && (
@@ -135,7 +135,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                                         className={cn(
                                             "flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200",
                                             isActive
-                                                ? "bg-gradient-to-r from-purple-600/20 to-pink-600/20 text-purple-400 border border-purple-500/30"
+                                                ? "bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-400/35"
                                                 : "text-slate-400 hover:bg-slate-700/50 hover:text-white"
                                         )}
                                     >
@@ -184,7 +184,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                         <Menu className="w-5 h-5" />
                     </button>
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-lg bg-white/10 ring-1 ring-white/20 flex items-center justify-center shadow-lg shadow-amber-500/30">
                             <NexRestoLogo className="w-5 h-5" priority />
                         </div>
                         <span className="font-bold text-white">God Mode</span>
@@ -212,7 +212,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                             <div className="flex flex-col h-full">
                                 <div className="h-16 flex items-center justify-between px-4 border-b border-slate-700">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+                                        <div className="w-8 h-8 rounded-lg bg-white/10 ring-1 ring-white/20 flex items-center justify-center shadow-lg shadow-amber-500/30">
                                             <NexRestoLogo className="w-5 h-5" priority />
                                         </div>
                                         <span className="font-bold text-white">God Mode</span>
@@ -237,7 +237,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                                                 className={cn(
                                                     "w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors",
                                                     isActive
-                                                        ? "bg-purple-600/20 text-purple-400"
+                                                        ? "bg-amber-500/20 text-amber-300"
                                                         : "text-slate-400 hover:bg-slate-700/50"
                                                 )}
                                             >
