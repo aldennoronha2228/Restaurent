@@ -32,12 +32,11 @@ function daysUntilYmd(endDateYmd: string): number {
 }
 
 /**
- * POST /api/reports/subscription-reminders
  * Sends owner reminder emails for:
  * - expiring in exactly 2 days
  * - already ended (first day after end)
  */
-export async function POST(request: NextRequest) {
+async function handleSubscriptionReminders(request: NextRequest) {
     if (!isAuthorizedCronRequest(request)) {
         return NextResponse.json({ error: 'Unauthorized cron request' }, { status: 401 });
     }
@@ -134,4 +133,20 @@ export async function POST(request: NextRequest) {
         failed: errors.length,
         errors,
     });
+}
+
+/**
+ * GET /api/reports/subscription-reminders
+ * Vercel Cron triggers this endpoint using GET.
+ */
+export async function GET(request: NextRequest) {
+    return handleSubscriptionReminders(request);
+}
+
+/**
+ * POST /api/reports/subscription-reminders
+ * Manual or internal invocation.
+ */
+export async function POST(request: NextRequest) {
+    return handleSubscriptionReminders(request);
 }

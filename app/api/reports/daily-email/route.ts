@@ -25,11 +25,10 @@ function isAuthorizedCronRequest(request: NextRequest): boolean {
 }
 
 /**
- * POST /api/reports/daily-email
  * Scheduled endpoint: sends yesterday's report to each restaurant owner
  * when email reports are enabled for that restaurant.
  */
-export async function POST(request: NextRequest) {
+async function handleDailyEmailCron(request: NextRequest) {
     if (!isAuthorizedCronRequest(request)) {
         return NextResponse.json({ error: 'Unauthorized cron request' }, { status: 401 });
     }
@@ -114,4 +113,20 @@ export async function POST(request: NextRequest) {
         failed: errors.length,
         errors,
     });
+}
+
+/**
+ * GET /api/reports/daily-email
+ * Vercel Cron triggers this endpoint using GET.
+ */
+export async function GET(request: NextRequest) {
+    return handleDailyEmailCron(request);
+}
+
+/**
+ * POST /api/reports/daily-email
+ * Manual or internal invocation.
+ */
+export async function POST(request: NextRequest) {
+    return handleDailyEmailCron(request);
 }
