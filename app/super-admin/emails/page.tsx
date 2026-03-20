@@ -151,18 +151,18 @@ export default function SuperAdminEmailsPage() {
                 ) : rows.length === 0 ? (
                     <div className="h-56 flex items-center justify-center text-slate-400">No restaurants found</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[980px]">
+                    <div>
+                        <table className="w-full table-fixed">
                             <thead>
                                 <tr className="border-b border-slate-700">
-                                    <th className="text-left px-5 py-3 text-slate-400 text-xs font-semibold">Restaurant</th>
-                                    <th className="text-left px-5 py-3 text-slate-400 text-xs font-semibold">Owner Email</th>
-                                    <th className="text-left px-5 py-3 text-slate-400 text-xs font-semibold">End Date</th>
-                                    <th className="text-left px-5 py-3 text-slate-400 text-xs font-semibold">Status</th>
-                                    <th className="text-left px-5 py-3 text-slate-400 text-xs font-semibold">Last Sent</th>
-                                    <th className="text-left px-5 py-3 text-slate-400 text-xs font-semibold">Delivery</th>
-                                    <th className="text-left px-5 py-3 text-slate-400 text-xs font-semibold">Last Error</th>
-                                    <th className="text-right px-5 py-3 text-slate-400 text-xs font-semibold">Actions</th>
+                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[14%]">Restaurant</th>
+                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[18%]">Owner Email</th>
+                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[12%]">End Date</th>
+                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[14%]">Status</th>
+                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[10%]">Last Sent</th>
+                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[16%]">Delivery</th>
+                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[8%]">Error</th>
+                                    <th className="text-right px-3 py-3 text-slate-400 text-xs font-semibold w-[8%]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -170,16 +170,18 @@ export default function SuperAdminEmailsPage() {
                                     const isBusy = busyId === row.id;
                                     const inReminderWindow = row.days_remaining !== null && row.days_remaining >= 0 && row.days_remaining <= 2;
                                     const hasEndDate = Boolean(row.subscription_end_date);
-                                    const canManualSend = hasEndDate && row.reminders_enabled && !row.account_temporarily_disabled;
+                                    const todayYmd = new Date().toISOString().slice(0, 10);
+                                    const alreadySentToday = row.last_reminder_sent_on === todayYmd;
+                                    const canManualSend = hasEndDate && row.reminders_enabled && !row.account_temporarily_disabled && !alreadySentToday;
 
                                     return (
                                         <tr key={row.id} className="border-b border-slate-700/60">
-                                            <td className="px-5 py-4">
+                                            <td className="px-3 py-3 align-top">
                                                 <p className="text-white font-medium">{row.name}</p>
                                                 <p className="text-slate-500 text-xs">{row.id}</p>
                                             </td>
-                                            <td className="px-5 py-4 text-slate-300 text-sm">{row.owner_email || 'Not found'}</td>
-                                            <td className="px-5 py-4 text-slate-300 text-sm">
+                                            <td className="px-3 py-3 text-slate-300 text-sm break-all align-top">{row.owner_email || 'Not found'}</td>
+                                            <td className="px-3 py-3 text-slate-300 text-sm align-top">
                                                 <div className="flex flex-col">
                                                     <span>{row.subscription_end_date || 'Not set'}</span>
                                                     {row.days_remaining !== null && (
@@ -192,7 +194,7 @@ export default function SuperAdminEmailsPage() {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4">
+                                            <td className="px-3 py-3 align-top">
                                                 <div className="flex flex-wrap gap-2">
                                                     <span className={cn(
                                                         'inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border',
@@ -215,23 +217,28 @@ export default function SuperAdminEmailsPage() {
                                                             Reminder Window
                                                         </span>
                                                     )}
+                                                    {alreadySentToday && (
+                                                        <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
+                                                            Sent Today
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4 text-slate-300 text-sm">
+                                            <td className="px-3 py-3 text-slate-300 text-sm align-top">
                                                 {row.last_reminder_sent_at ? formatDate(row.last_reminder_sent_at) : 'Never'}
                                             </td>
-                                            <td className="px-5 py-4 text-xs text-slate-300">
+                                            <td className="px-3 py-3 text-xs text-slate-300 align-top">
                                                 <div className="space-y-0.5">
-                                                    <p>To: {row.last_reminder_to || 'N/A'}</p>
-                                                    <p>ID: {row.last_reminder_provider_id || 'N/A'}</p>
+                                                    <p className="break-all">To: {row.last_reminder_to || 'N/A'}</p>
+                                                    <p className="break-all">ID: {row.last_reminder_provider_id || 'N/A'}</p>
                                                     <p>Source: {row.last_reminder_source || 'N/A'}</p>
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4 text-xs text-rose-300 max-w-[260px] truncate" title={row.last_reminder_error || ''}>
+                                            <td className="px-3 py-3 text-xs text-rose-300 align-top break-words" title={row.last_reminder_error || ''}>
                                                 {row.last_reminder_error || 'None'}
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center justify-end gap-2">
+                                            <td className="px-3 py-3 align-top">
+                                                <div className="flex flex-col items-end gap-2">
                                                     <button
                                                         disabled={isBusy}
                                                         onClick={() => handleToggle(row)}

@@ -444,6 +444,12 @@ export async function sendManualSubscriptionReminderEmail(
         }
 
         const restaurant = restaurantSnap.data() || {};
+        const todayYmd = new Date().toISOString().slice(0, 10);
+        const alreadySentOn = String(restaurant.last_subscription_reminder_sent_on || '').trim();
+        if (alreadySentOn === todayYmd) {
+            return { success: false, error: 'Reminder already sent today for this restaurant' };
+        }
+
         if (Boolean(restaurant.account_temporarily_disabled)) {
             return { success: false, error: 'Restaurant is temporarily disabled' };
         }
@@ -484,7 +490,6 @@ export async function sendManualSubscriptionReminderEmail(
             return { success: false, error: emailResult.error || 'Email send failed' };
         }
 
-        const todayYmd = new Date().toISOString().slice(0, 10);
         await restaurantRef.update({
             last_subscription_reminder_kind: reminderType,
             last_subscription_reminder_for: endDate,
