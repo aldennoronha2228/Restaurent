@@ -1175,23 +1175,29 @@ function DraggableTable({
     onActivate,
 }: {
     table: Table;
-    onPlaceAtPoint: (id: string, pointX: number, pointY: number) => void;
+    onPlaceAtPoint: (id: string, pointX: number, pointY: number, anchor?: { offsetX: number; offsetY: number }) => void;
     isActive?: boolean;
     onActivate?: (id: string) => void;
 }) {
     const cfg = statusConfig[table.status];
     const [isDragging, setIsDragging] = useState(false);
+    const dragAnchorRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
 
     const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         setIsDragging(true);
         onActivate?.(table.id);
-        onPlaceAtPoint(table.id, e.clientX, e.clientY);
+        const rect = e.currentTarget.getBoundingClientRect();
+        dragAnchorRef.current = {
+            offsetX: e.clientX - rect.left,
+            offsetY: e.clientY - rect.top,
+        };
+        onPlaceAtPoint(table.id, e.clientX, e.clientY, dragAnchorRef.current);
     };
 
     const moveDrag = (e: React.PointerEvent<HTMLDivElement>) => {
         if (!isDragging) return;
-        onPlaceAtPoint(table.id, e.clientX, e.clientY);
+        onPlaceAtPoint(table.id, e.clientX, e.clientY, dragAnchorRef.current || undefined);
     };
 
     const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1202,6 +1208,7 @@ function DraggableTable({
         } catch {
             // no-op for browsers that auto-release capture
         }
+        dragAnchorRef.current = null;
     };
 
     return (
@@ -1210,7 +1217,7 @@ function DraggableTable({
             onPointerMove={moveDrag}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
-            style={{ position: 'absolute', left: table.x, top: table.y, cursor: isDragging ? 'grabbing' : 'grab' }}
+            style={{ position: 'absolute', left: table.x, top: table.y, cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none' }}
             whileHover={{ scale: 1.05 }}
             animate={{ scale: isDragging ? 1.08 : 1, opacity: isDragging ? 0.92 : 1 }}
             className={cn(
@@ -1282,18 +1289,20 @@ function FloorPlanEditor({ tables, setTables, walls, setWalls, desks, setDesks, 
     const updateTable = (id: string, x: number, y: number) => setTables(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
     const updateWall = (id: string, x: number, y: number) => setWalls(prev => prev.map(w => w.id === id ? { ...w, x, y } : w));
     const updateDesk = (id: string, x: number, y: number) => setDesks(prev => prev.map(d => d.id === id ? { ...d, x, y } : d));
-    const placeTableAtPoint = (id: string, pointX: number, pointY: number) => {
+    const placeTableAtPoint = (id: string, pointX: number, pointY: number, anchor?: { offsetX: number; offsetY: number }) => {
         const grid = floorPlanRef.current;
         if (!grid) return;
         const rect = grid.getBoundingClientRect();
         const tableSize = 80;
-        const nextX = Math.max(0, Math.min(rect.width - tableSize, pointX - rect.left - tableSize / 2));
-        const nextY = Math.max(0, Math.min(rect.height - tableSize, pointY - rect.top - tableSize / 2));
+        const offsetX = anchor?.offsetX ?? tableSize / 2;
+        const offsetY = anchor?.offsetY ?? tableSize / 2;
+        const nextX = Math.max(0, Math.min(rect.width - tableSize, pointX - rect.left - offsetX));
+        const nextY = Math.max(0, Math.min(rect.height - tableSize, pointY - rect.top - offsetY));
         updateTable(id, nextX, nextY);
     };
 
     return (
-        <div ref={floorPlanRef} className="relative bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-2xl overflow-hidden" style={{ height: 600, backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+        <div ref={floorPlanRef} className="relative bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-2xl overflow-hidden touch-none" style={{ height: 'min(600px, 72vh)', backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
             {walls.map((w, index) => <DraggableWall key={w.id || `wall-${index}`} wall={w} onUpdate={updateWall} onDelete={id => setWalls(prev => prev.filter(x => x.id !== id))} />)}
             {desks.map((d, index) => <DraggableDesk key={d.id || `desk-${index}`} desk={d} onUpdate={updateDesk} onDelete={id => setDesks(prev => prev.filter(x => x.id !== id))} />)}
             {tables.map((t, index) => (
@@ -1464,19 +1473,19 @@ function TableTopFallback({ rectangular }: { rectangular: boolean }) {
         <group>
             <mesh castShadow receiveShadow>
                 <cylinderGeometry args={[0.72, 0.72, 0.12, 46]} />
-                <meshStandardMaterial color="#5b3a2c" roughness={0.4} metalness={0.08} />
+                <meshStandardMaterial color="#f97316" roughness={0.38} metalness={0.08} />
             </mesh>
             <mesh position={[0, 0.07, 0]} castShadow receiveShadow>
                 <cylinderGeometry args={[0.26, 0.26, 0.02, 36]} />
-                <meshStandardMaterial color="#d6d3d1" roughness={0.75} metalness={0.02} />
+                <meshStandardMaterial color="#fed7aa" roughness={0.72} metalness={0.02} />
             </mesh>
             <mesh position={[0, -0.24, 0]} castShadow receiveShadow>
                 <cylinderGeometry args={[0.19, 0.24, 0.46, 24]} />
-                <meshStandardMaterial color="#4a2f24" roughness={0.48} metalness={0.08} />
+                <meshStandardMaterial color="#c2410c" roughness={0.46} metalness={0.08} />
             </mesh>
             <mesh position={[0, -0.48, 0]} castShadow receiveShadow>
                 <cylinderGeometry args={[0.33, 0.33, 0.05, 28]} />
-                <meshStandardMaterial color="#3e2720" roughness={0.5} metalness={0.1} />
+                <meshStandardMaterial color="#9a3412" roughness={0.48} metalness={0.1} />
             </mesh>
         </group>
     );
@@ -1728,11 +1737,8 @@ function InteractiveReview3DScene({
                     showY
                     showZ={transformMode === 'translate'}
                     onObjectChange={handleTransformChange}
-                    onDraggingChanged={(evt) => {
-                        // drei may send either a boolean or an event-like object with .value
-                        const dragging = typeof evt === 'boolean' ? evt : Boolean((evt as any)?.value);
-                        setIsTransforming(dragging);
-                    }}
+                    onMouseDown={() => setIsTransforming(true)}
+                    onMouseUp={() => setIsTransforming(false)}
                 />
             )}
 
@@ -1774,6 +1780,8 @@ export default function TablesQRCodesPage() {
     const [transformMode, setTransformMode] = useState<'translate' | 'rotate'>('translate');
     const [snapEnabled, setSnapEnabled] = useState(true);
     const [draggingDetectedId, setDraggingDetectedId] = useState<string | null>(null);
+    const detectedDragOffsetRef = useRef<{ x: number; y: number } | null>(null);
+    const [isMobileViewport, setIsMobileViewport] = useState(false);
     const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
     const [detectedTables, setDetectedTables] = useState<DetectedTable3D[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1867,6 +1875,16 @@ export default function TablesQRCodesPage() {
         };
     }, []);
 
+    const mapAbsoluteToNormalized = useCallback((x: number, y: number) => {
+        const node = floorPlanRef.current;
+        const width = node?.clientWidth ?? 1000;
+        const height = node?.clientHeight ?? 600;
+        return {
+            x: Math.max(0, Math.min(100, Number(((x / Math.max(width, 1)) * 100).toFixed(2)))),
+            y: Math.max(0, Math.min(100, Number(((y / Math.max(height, 1)) * 100).toFixed(2)))),
+        };
+    }, []);
+
     const applyAiLayout = useCallback(async (imageFile: Blob, previewUrl?: string) => {
         if (userSubscription !== 'pro') {
             setShowUpgradeModal(true);
@@ -1922,7 +1940,7 @@ export default function TablesQRCodesPage() {
 
         if (tracked.length > 0) {
             setDetectedTables(tracked);
-            setReviewViewMode('3d');
+            setReviewViewMode(isMobileViewport ? '2d' : '3d');
             setAutoLayoutStep('review3d');
             return;
         }
@@ -1931,7 +1949,7 @@ export default function TablesQRCodesPage() {
         const response = await fetch(previewUrl);
         const blob = await response.blob();
         await applyAiLayout(blob, previewUrl);
-    }, [applyAiLayout]);
+    }, [applyAiLayout, isMobileViewport]);
 
     const updateDetectedTable = useCallback((id: string, patch: Partial<DetectedTable3D>) => {
         setDetectedTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -1949,10 +1967,41 @@ export default function TablesQRCodesPage() {
         }));
 
         setDetectedTables(mapped);
-        setReviewViewMode('3d');
+        setReviewViewMode(isMobileViewport ? '2d' : '3d');
         setAutoLayoutStep('review3d');
         toast.success(`AI Analysis Complete: ${mapped.length} Tables synchronized`);
-    }, []);
+    }, [isMobileViewport]);
+
+    const open3DReviewFromCurrentLayout = useCallback(() => {
+        if (userSubscription !== 'pro') {
+            setShowUpgradeModal(true);
+            return;
+        }
+
+        const source = detectedTables.length > 0
+            ? detectedTables
+            : tables.map((table, idx) => {
+                const normalized = mapAbsoluteToNormalized(table.x, table.y);
+                return {
+                    id: table.id || `T-${String(idx + 1).padStart(2, '0')}`,
+                    type: 'standard' as const,
+                    x: normalized.x,
+                    y: normalized.y,
+                    seats: table.seats || 4,
+                    elevation: 0,
+                    rotationY: 0,
+                } as DetectedTable3D;
+            });
+
+        if (source.length === 0) {
+            toast.info('Add at least one table to open 3D review.');
+            return;
+        }
+
+        setDetectedTables(source);
+        setReviewViewMode(isMobileViewport ? '2d' : '3d');
+        setAutoLayoutStep('review3d');
+    }, [userSubscription, detectedTables, tables, mapAbsoluteToNormalized, isMobileViewport]);
 
     const saveReviewedLayoutToFirebase = useCallback(async () => {
         if (!tenantId) return;
@@ -1976,6 +2025,35 @@ export default function TablesQRCodesPage() {
         toast.success('Floor plan saved to Firebase');
     }, [tenantId, detectedTables]);
 
+    const autoAlignDetectedTables = useCallback(() => {
+        if (detectedTables.length === 0) {
+            toast.info('No tables to align.');
+            return;
+        }
+
+        const sorted = [...detectedTables].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+        const count = sorted.length;
+        const cols = Math.max(2, Math.ceil(Math.sqrt(count)));
+        const rows = Math.ceil(count / cols);
+        const xPadding = 14;
+        const yPadding = 14;
+        const usableW = 100 - xPadding * 2;
+        const usableH = 100 - yPadding * 2;
+
+        const aligned = sorted.map((item, idx) => {
+            const col = idx % cols;
+            const row = Math.floor(idx / cols);
+            return {
+                ...item,
+                x: Number((xPadding + (col + 0.5) * (usableW / cols)).toFixed(2)),
+                y: Number((yPadding + (row + 0.5) * (usableH / Math.max(rows, 1))).toFixed(2)),
+            };
+        });
+
+        setDetectedTables(aligned);
+        toast.success('Auto align applied');
+    }, [detectedTables]);
+
     const placeDetectedTableAtPoint = useCallback((id: string, pointX: number, pointY: number) => {
         const grid = reviewGridRef.current;
         if (!grid) return;
@@ -1995,6 +2073,7 @@ export default function TablesQRCodesPage() {
 
     const endDetectedDrag = useCallback(() => {
         setDraggingDetectedId(null);
+        detectedDragOffsetRef.current = null;
     }, []);
 
     const confirmAndSync3D = useCallback(async () => {
@@ -2109,6 +2188,16 @@ export default function TablesQRCodesPage() {
             active = false;
         };
     }, [tenantId, scopedKey, getActiveToken, saveLayoutToServer]);
+
+    useEffect(() => {
+        const syncViewport = () => {
+            setIsMobileViewport(window.innerWidth < 768);
+        };
+
+        syncViewport();
+        window.addEventListener('resize', syncViewport);
+        return () => window.removeEventListener('resize', syncViewport);
+    }, []);
 
     // Autosave whenever the floor plan components change, but ONLY after initial load
     useEffect(() => {
@@ -2361,6 +2450,15 @@ export default function TablesQRCodesPage() {
                                         <Upload className="w-4 h-4" />
                                         Upload Photo
                                     </motion.button>
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={open3DReviewFromCurrentLayout}
+                                        className="flex items-center gap-2 px-4 py-2 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-sm font-medium"
+                                    >
+                                        <Sparkles className="w-4 h-4" />
+                                        Open 3D Review
+                                    </motion.button>
                                 </div>
                                 <div className="flex items-center gap-3 flex-wrap">
                                     <AnimatePresence mode="wait">
@@ -2416,7 +2514,7 @@ export default function TablesQRCodesPage() {
                                 >
                                     <div className="flex flex-col lg:flex-row gap-4">
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between mb-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                                                 <h3 className="text-sm font-semibold text-slate-800">3D Review</h3>
                                                 <div className="flex items-center gap-3">
                                                     {reviewViewMode === '3d' && (
@@ -2481,7 +2579,7 @@ export default function TablesQRCodesPage() {
                                             <div className="relative">
                                                 <div className={cn('relative rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden', !isSpatialPro && 'blur-[2px] pointer-events-none')}>
                                                     {reviewViewMode === '3d' ? (
-                                                        <div className="relative h-[520px]">
+                                                        <div className="relative h-[68vh] min-h-[360px] max-h-[560px]">
                                                             <InteractiveReview3DScene
                                                                 detectedTables={detectedTables}
                                                                 walls={walls}
@@ -2493,11 +2591,7 @@ export default function TablesQRCodesPage() {
                                                     ) : (
                                                         <div
                                                             ref={reviewGridRef}
-                                                            className="relative h-[520px] bg-slate-50"
-                                                            onPointerMove={(e) => {
-                                                                if (!draggingDetectedId) return;
-                                                                placeDetectedTableAtPoint(draggingDetectedId, e.clientX, e.clientY);
-                                                            }}
+                                                            className="relative h-[68vh] min-h-[360px] max-h-[560px] bg-slate-50 touch-none"
                                                             onPointerUp={endDetectedDrag}
                                                             onPointerLeave={endDetectedDrag}
                                                             onPointerCancel={endDetectedDrag}
@@ -2512,10 +2606,34 @@ export default function TablesQRCodesPage() {
                                                                     onPointerDown={(e) => {
                                                                         e.currentTarget.setPointerCapture(e.pointerId);
                                                                         setDraggingDetectedId(table.id);
-                                                                        placeDetectedTableAtPoint(table.id, e.clientX, e.clientY);
+                                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                                        detectedDragOffsetRef.current = {
+                                                                            x: rect.left + rect.width / 2 - e.clientX,
+                                                                            y: rect.top + rect.height / 2 - e.clientY,
+                                                                        };
+                                                                        placeDetectedTableAtPoint(
+                                                                            table.id,
+                                                                            e.clientX + detectedDragOffsetRef.current.x,
+                                                                            e.clientY + detectedDragOffsetRef.current.y
+                                                                        );
                                                                     }}
+                                                                    onPointerMove={(e) => {
+                                                                        if (draggingDetectedId !== table.id) return;
+                                                                        const dx = detectedDragOffsetRef.current?.x ?? 0;
+                                                                        const dy = detectedDragOffsetRef.current?.y ?? 0;
+                                                                        placeDetectedTableAtPoint(table.id, e.clientX + dx, e.clientY + dy);
+                                                                    }}
+                                                                    onPointerUp={(e) => {
+                                                                        try {
+                                                                            e.currentTarget.releasePointerCapture(e.pointerId);
+                                                                        } catch {
+                                                                            // no-op for browsers that auto-release capture
+                                                                        }
+                                                                        endDetectedDrag();
+                                                                    }}
+                                                                    onPointerCancel={endDetectedDrag}
                                                                     className={cn(
-                                                                        'absolute rounded-2xl cursor-grab border-2 border-emerald-500 bg-emerald-100/90 shadow-[0_4px_12px_rgba(16,185,129,0.18)] text-emerald-900 flex flex-col items-center justify-center',
+                                                                        'absolute rounded-2xl cursor-grab border-2 border-emerald-500 bg-emerald-100/90 shadow-[0_4px_12px_rgba(16,185,129,0.18)] text-emerald-900 flex flex-col items-center justify-center touch-none',
                                                                         table.type === 'booth' ? 'w-28 h-20' : 'w-24 h-24'
                                                                     )}
                                                                     style={{ left: `${table.x}%`, top: `${table.y}%`, transform: 'translate(-50%, -50%)' }}
@@ -2562,6 +2680,13 @@ export default function TablesQRCodesPage() {
                                                     className="h-9 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium shadow-sm"
                                                 >
                                                     Save to Firebase
+                                                </button>
+                                                <button
+                                                    onClick={autoAlignDetectedTables}
+                                                    disabled={detectedTables.length === 0}
+                                                    className="col-span-2 h-9 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium shadow-sm"
+                                                >
+                                                    Auto Align
                                                 </button>
                                             </div>
                                             <div className="space-y-2 max-h-[430px] overflow-y-auto pr-1">
