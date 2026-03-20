@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense, Component, type ErrorInfo, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Download, QrCode, Trash2, Minus, Check, FolderOpen, Save, X, ZoomIn, Share2, Lock, Sparkles, Edit3, Users, Camera, ScanLine, Video, Upload } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { ProFeatureGate, ProBadge } from '@/components/dashboard/ProFeatureGate';
 import { adminAuth, db, tenantAuth } from '@/lib/firebase';
-import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 const MENU_CUSTOMER_PATH = process.env.NEXT_PUBLIC_MENU_CUSTOMER_PATH ?? '/customer';
 
@@ -196,6 +196,9 @@ function CameraModal({
         confidence: number;
         stableFrames: number;
         aspectRatio: number;
+        hitStreak: number;
+        misses: number;
+        lastSeenTick: number;
     }>>(new Map());
 
     const [cameraError, setCameraError] = useState<string | null>(null);
@@ -340,11 +343,13 @@ function CameraModal({
                 const mean = sum / n;
                 const variance = Math.max(0, sq / n - mean * mean);
                 const edgeNorm = edge / n;
-                if (edgeNorm < 20 || variance < 110 || variance > 5200) continue;
+                if (x < width * 0.06 || x + block > width * 0.94) continue;
+                if (edgeNorm < 26 || variance < 170 || variance > 4600) continue;
 
                 const score = edgeNorm * 0.68 + Math.min(variance, 4000) * 0.32;
-                const confidence = Math.max(0, Math.min(1, (edgeNorm - 20) / 52 + (variance - 110) / 6200));
+                const confidence = Math.max(0, Math.min(1, (edgeNorm - 26) / 40 + (variance - 170) / 5200));
                 const shapeBias = Math.max(0.72, Math.min(1.85, (edgeX + 1) / (edgeY + 1)));
+                if (shapeBias < 0.65 || shapeBias > 1.9) continue;
                 const size = Math.max(56, Math.min(148, block * (1.6 + variance / 5200)));
                 const widthScale = shapeBias >= 1.15 ? 1.22 : shapeBias <= 0.9 ? 0.92 : 1.04;
                 const heightScale = shapeBias <= 0.9 ? 1.24 : shapeBias >= 1.15 ? 0.82 : 0.98;
@@ -363,11 +368,12 @@ function CameraModal({
         }
 
         raw.sort((a, b) => b.score - a.score);
-        const minDist = Math.max(56, block * 2.1);
+        const minDist = Math.max(72, block * 2.4);
         const picked: Array<{ cx: number; cy: number; w: number; h: number; confidence: number; aspectRatio: number }> = [];
 
         for (const c of raw) {
             if (picked.length >= 8) break;
+            if (c.confidence < 0.54) continue;
             const tooClose = picked.some((p) => Math.hypot(p.cx - c.cx, p.cy - c.cy) < minDist);
             if (!tooClose) picked.push({ cx: c.cx, cy: c.cy, w: c.w, h: c.h, confidence: c.confidence, aspectRatio: c.w / Math.max(c.h, 1) });
         }
@@ -410,8 +416,17 @@ function CameraModal({
         }));
     }, []);
 
-    const ingestDetections = useCallback((detections: Array<{ cx: number; cy: number; w: number; h: number; worldX: number; worldZ: number; confidence: number; aspectRatio: number }>) => {
-        const threshold = 68;
+    const ingestDetections = useCallback((
+        detections: Array<{ cx: number; cy: number; w: number; h: number; worldX: number; worldZ: number; confidence: number; aspectRatio: number }>,
+        tick: number
+    ) => {
+        const threshold = 62;
+
+        for (const tracked of trackingMapRef.current.values()) {
+            tracked.misses += 1;
+            tracked.confidence = tracked.confidence * 0.985;
+        }
+
         for (const detection of detections) {
             let closest: { key: string; distance: number } | null = null;
 
@@ -423,6 +438,9 @@ function CameraModal({
             }
 
             if (!closest) {
+                if (detection.confidence < 0.62 || trackingMapRef.current.size >= 24) {
+                    continue;
+                }
                 const id = `T-${String(trackingMapRef.current.size + 1).padStart(2, '0')}`;
                 trackingMapRef.current.set(id, {
                     id,
@@ -438,6 +456,9 @@ function CameraModal({
                     confidence: detection.confidence,
                     stableFrames: 1,
                     aspectRatio: detection.aspectRatio,
+                    hitStreak: 1,
+                    misses: 0,
+                    lastSeenTick: tick,
                 });
                 continue;
             }
@@ -445,21 +466,59 @@ function CameraModal({
             const tracked = trackingMapRef.current.get(closest.key);
             if (!tracked) continue;
 
+            const pxDistance = Math.hypot(tracked.cx - detection.cx, tracked.cy - detection.cy);
+            const sizeDelta = Math.abs(tracked.w - detection.w) / Math.max(tracked.w, 1) + Math.abs(tracked.h - detection.h) / Math.max(tracked.h, 1);
+            const isStableHit = pxDistance <= 20 && sizeDelta <= 0.5;
             const n = tracked.samples + 1;
-            tracked.cx = (tracked.cx * tracked.samples + detection.cx) / n;
-            tracked.cy = (tracked.cy * tracked.samples + detection.cy) / n;
-            tracked.w = (tracked.w * tracked.samples + detection.w) / n;
-            tracked.h = (tracked.h * tracked.samples + detection.h) / n;
-            tracked.worldX = (tracked.worldX * tracked.samples + detection.worldX) / n;
-            tracked.worldZ = (tracked.worldZ * tracked.samples + detection.worldZ) / n;
+            const alpha = tracked.locked ? 0.22 : 0.32;
+            tracked.cx = tracked.cx * (1 - alpha) + detection.cx * alpha;
+            tracked.cy = tracked.cy * (1 - alpha) + detection.cy * alpha;
+            tracked.w = tracked.w * (1 - alpha) + detection.w * alpha;
+            tracked.h = tracked.h * (1 - alpha) + detection.h * alpha;
+            tracked.worldX = tracked.worldX * (1 - alpha) + detection.worldX * alpha;
+            tracked.worldZ = tracked.worldZ * (1 - alpha) + detection.worldZ * alpha;
             tracked.samples = n;
-            tracked.confidence = (tracked.confidence * (n - 1) + detection.confidence) / n;
-            tracked.stableFrames += 1;
+            tracked.confidence = tracked.confidence * 0.75 + detection.confidence * 0.25;
+            tracked.stableFrames = isStableHit ? tracked.stableFrames + 1 : Math.max(0, tracked.stableFrames - 1);
+            tracked.hitStreak = isStableHit ? tracked.hitStreak + 1 : Math.max(0, tracked.hitStreak - 1);
             tracked.aspectRatio = (tracked.aspectRatio * (n - 1) + detection.aspectRatio) / n;
+            tracked.misses = 0;
+            tracked.lastSeenTick = tick;
 
-            if (!tracked.locked && tracked.stableFrames >= 5 && tracked.confidence >= 0.55) {
+            if (!tracked.locked && tracked.hitStreak >= 7 && tracked.stableFrames >= 6 && tracked.samples >= 6 && tracked.confidence >= 0.66) {
                 tracked.locked = true;
                 navigator.vibrate?.(35);
+            }
+        }
+
+        for (const [key, tracked] of trackingMapRef.current.entries()) {
+            if (tracked.locked && tracked.misses > 22) {
+                trackingMapRef.current.delete(key);
+                continue;
+            }
+            if (!tracked.locked) {
+                const stale = tracked.misses > 8;
+                const weak = tracked.samples >= 4 && tracked.confidence < 0.5;
+                const tooBrief = tracked.samples < 4 && tracked.misses > 3;
+                if (stale || weak || tooBrief) {
+                    trackingMapRef.current.delete(key);
+                }
+            }
+        }
+
+        // Remove duplicate nearby locks by keeping the stronger, older track.
+        const locked = Array.from(trackingMapRef.current.values())
+            .filter((t) => t.locked)
+            .sort((a, b) => (b.confidence + b.samples * 0.01) - (a.confidence + a.samples * 0.01));
+        for (let i = 0; i < locked.length; i++) {
+            for (let j = i + 1; j < locked.length; j++) {
+                const a = locked[i];
+                const b = locked[j];
+                const worldDistance = Math.hypot(a.worldX - b.worldX, a.worldZ - b.worldZ);
+                const screenDistance = Math.hypot(a.cx - b.cx, a.cy - b.cy);
+                if (worldDistance < 0.62 || screenDistance < 44) {
+                    trackingMapRef.current.delete(b.id);
+                }
             }
         }
 
@@ -570,9 +629,10 @@ function CameraModal({
                             if (frameNumberRef.current % FRAME_SKIP === 0) {
                                 const img = pctx.getImageData(0, 0, width, height);
                                 const detections = detectFrameCandidates(img, width, height, frameNumberRef.current);
-                                ingestDetections(detections);
+                                ingestDetections(detections, frameNumberRef.current);
                                 const locked = Array.from(trackingMapRef.current.values()).filter((x) => x.locked).length;
-                                setScanLabel(`Tracking ${trackingMapRef.current.size} candidates • locked ${locked} • ${Math.max(1, FRAME_SKIP)}-frame AI skip`);
+                                const provisional = Math.max(0, trackingMapRef.current.size - locked);
+                                setScanLabel(`Tracking ${provisional} provisional • locked ${locked} • ${Math.max(1, FRAME_SKIP)}-frame AI skip`);
                             }
 
                             drawTracingOverlay(octx, width, height, now);
@@ -1623,6 +1683,30 @@ function applySnapping(
     return { x, y: proposed.y, z };
 }
 
+class SceneErrorBoundary extends Component<{
+    fallback: ReactNode;
+    children: ReactNode;
+}, {
+    hasError: boolean;
+}> {
+    state = { hasError: false };
+
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error: Error, info: ErrorInfo) {
+        console.error('3D scene failed to render', error, info);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return this.props.fallback;
+        }
+        return this.props.children;
+    }
+}
+
 function InteractiveReview3DScene({
     detectedTables,
     walls,
@@ -1834,33 +1918,47 @@ export default function TablesQRCodesPage() {
     const reviewGridRef = useRef<HTMLDivElement | null>(null);
 
     const generateLayoutFromImage = useCallback(async (imageFile: Blob): Promise<AiLayoutTable[]> => {
-        // Mock multimodal processing call - replace with real endpoint when model is wired.
-        await new Promise((resolve) => setTimeout(resolve, 1600));
+        if (!tenantId) throw new Error('Restaurant context is missing');
 
-        const count = Math.max(tables.length, 6);
-        const cols = Math.ceil(Math.sqrt(count));
-        const rows = Math.ceil(count / cols);
-        const xPadding = 12;
-        const yPadding = 12;
-        const usableW = 100 - xPadding * 2;
-        const usableH = 100 - yPadding * 2;
+        const token = await getActiveToken();
+        const imageName = imageFile instanceof File && imageFile.name ? imageFile.name : 'layout-scan.jpg';
+        const formData = new FormData();
+        formData.append('restaurantId', tenantId);
+        formData.append('hintTableCount', String(Math.max(1, tables.length)));
+        formData.append('image', imageFile, imageName);
 
-        const aiJson = Array.from({ length: count }).map((_, idx) => {
-            const col = idx % cols;
-            const row = Math.floor(idx / cols);
-            const x = xPadding + (col + 0.5) * (usableW / cols);
-            const y = yPadding + (row + 0.5) * (usableH / rows);
-            return {
-                id: `T-${String(idx + 1).padStart(2, '0')}`,
-                type: 'standard' as const,
-                x: Math.max(0, Math.min(100, Number(x.toFixed(2)))),
-                y: Math.max(0, Math.min(100, Number(y.toFixed(2)))),
-            };
+        const response = await fetch('/api/tables/analyze-image', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: formData,
         });
 
-        void imageFile;
-        return aiJson;
-    }, [tables.length]);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload?.error || 'AI image analysis failed');
+        }
+
+        const parsedTables = Array.isArray(payload?.tables) ? payload.tables : [];
+        const normalized = parsedTables
+            .map((item: any, idx: number) => {
+                const type = item?.type === 'booth' || item?.type === 'high-top' ? item.type : 'standard';
+                return {
+                    id: String(item?.id || `T-${String(idx + 1).padStart(2, '0')}`),
+                    type,
+                    x: Math.max(0, Math.min(100, Number(item?.x ?? 0))),
+                    y: Math.max(0, Math.min(100, Number(item?.y ?? 0))),
+                } as AiLayoutTable;
+            })
+            .filter((item: AiLayoutTable) => Number.isFinite(item.x) && Number.isFinite(item.y));
+
+        if (normalized.length === 0) {
+            throw new Error('AI could not detect tables from this image. Try a clearer top-angle photo.');
+        }
+
+        return normalized;
+    }, [tenantId, getActiveToken, tables.length]);
 
     const mapNormalizedToAbsolute = useCallback((x: number, y: number) => {
         const node = floorPlanRef.current;
@@ -1906,6 +2004,9 @@ export default function TablesQRCodesPage() {
             setDetectedTables(nextDetected);
             setReviewViewMode('3d');
             setAutoLayoutStep('review3d');
+        } catch (error: any) {
+            setAutoLayoutStep('idle');
+            toast.error(error?.message || 'AI analysis failed. Try another image with clearer table visibility.');
         } finally {
             setIsAiScanning(false);
             if (photoInputRef.current) photoInputRef.current.value = '';
@@ -1932,23 +2033,38 @@ export default function TablesQRCodesPage() {
         await applyAiLayout(file);
     }, [applyAiLayout]);
 
-    const onCameraScanComplete = useCallback(async ({ previewUrl, detectedTables: tracked }: { previewUrl: string; detectedTables: DetectedTable3D[] }) => {
+    const onCameraScanComplete = useCallback(async ({ previewUrl }: { previewUrl: string; detectedTables: DetectedTable3D[] }) => {
         setShowCameraModal(false);
 
         if (previewUrl) setCapturedImagePreview(previewUrl);
 
-        if (tracked.length > 0) {
-            setDetectedTables(tracked);
-            setReviewViewMode(isMobileViewport ? '2d' : '3d');
-            setAutoLayoutStep('review3d');
-            return;
-        }
-
-        // Fallback: if no stable lock happened, keep existing behavior via mock image layout.
         const response = await fetch(previewUrl);
         const blob = await response.blob();
-        await applyAiLayout(blob, previewUrl);
-    }, [applyAiLayout, isMobileViewport]);
+
+        setAutoLayoutStep('scanning');
+        setIsAiScanning(true);
+        try {
+            const aiTables = await generateLayoutFromImage(blob);
+            const nextDetected = aiTables.map((item, idx) => ({
+                ...item,
+                seats: tables[idx]?.seats || 4,
+                elevation: 0,
+                rotationY: 0,
+            }));
+
+            setDetectedTables(nextDetected);
+            setReviewViewMode(isMobileViewport ? '2d' : '3d');
+            setAutoLayoutStep('review3d');
+            toast.success(`AI Analysis Complete: ${nextDetected.length} tables detected`);
+            return;
+        } catch {
+            setAutoLayoutStep('idle');
+            toast.error('AI analysis was not confident. Please retake a clearer photo (top angle, good lighting, full table area).');
+            return;
+        } finally {
+            setIsAiScanning(false);
+        }
+    }, [applyAiLayout, generateLayoutFromImage, isMobileViewport, tables]);
 
     const updateDetectedTable = useCallback((id: string, patch: Partial<DetectedTable3D>) => {
         setDetectedTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -2005,24 +2121,24 @@ export default function TablesQRCodesPage() {
     const saveReviewedLayoutToFirebase = useCallback(async () => {
         if (!tenantId) return;
 
-        const layoutPayload = {
-            metadata: VALIDATED_LAYOUT_JSON.metadata,
-            layout: detectedTables.map((item, index) => ({
-                id: item.id || `T${index + 1}`,
-                shape: 'round' as const,
-                capacity: item.seats,
-                coordinates: {
-                    x: Math.max(0, Math.min(100, Number(item.x.toFixed(2)))),
-                    y: Math.max(0, Math.min(100, Number(item.y.toFixed(2)))),
-                },
-                clearance_buffer: 10,
-            })),
-            updatedAt: serverTimestamp(),
-        };
+        const updatedTables = detectedTables.map((item, idx) => {
+            const prev = tables[idx];
+            const abs = mapNormalizedToAbsolute(item.x, item.y);
+            return {
+                id: prev?.id || item.id,
+                name: prev?.name || `Table ${idx + 1}`,
+                seats: item.seats,
+                status: prev?.status || 'available',
+                x: abs.x,
+                y: abs.y,
+            } as Table;
+        });
 
-        await setDoc(doc(db, 'restaurants', tenantId, 'floorplan', 'current'), layoutPayload, { merge: true });
-        toast.success('Floor plan saved to Firebase');
-    }, [tenantId, detectedTables]);
+        setTables(updatedTables);
+        setHasChanges(true);
+        await saveLayoutToServer(updatedTables, walls, desks, floorPlans);
+        toast.success('Floor plan saved for this hotel');
+    }, [tenantId, detectedTables, tables, mapNormalizedToAbsolute, saveLayoutToServer, walls, desks, floorPlans]);
 
     const autoAlignDetectedTables = useCallback(() => {
         if (detectedTables.length === 0) {
@@ -2579,13 +2695,30 @@ export default function TablesQRCodesPage() {
                                                 <div className={cn('relative rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden', !isSpatialPro && 'blur-[2px] pointer-events-none')}>
                                                     {reviewViewMode === '3d' ? (
                                                         <div className="relative h-[68vh] min-h-[360px] max-h-[560px]">
-                                                            <InteractiveReview3DScene
-                                                                detectedTables={detectedTables}
-                                                                walls={walls}
-                                                                snapEnabled={snapEnabled}
-                                                                transformMode={transformMode}
-                                                                onUpdateTable={updateDetectedTable}
-                                                            />
+                                                            <SceneErrorBoundary
+                                                                fallback={
+                                                                    <div className="h-full w-full flex items-center justify-center bg-slate-50 p-5">
+                                                                        <div className="max-w-sm rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+                                                                            <p className="text-sm font-semibold text-amber-900">3D view is unavailable on this device right now.</p>
+                                                                            <p className="mt-1 text-xs text-amber-700">You can continue safely in 2D review and still save this floor plan.</p>
+                                                                            <button
+                                                                                onClick={() => setReviewViewMode('2d')}
+                                                                                className="mt-3 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium"
+                                                                            >
+                                                                                Switch to 2D Review
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                            >
+                                                                <InteractiveReview3DScene
+                                                                    detectedTables={detectedTables}
+                                                                    walls={walls}
+                                                                    snapEnabled={snapEnabled}
+                                                                    transformMode={transformMode}
+                                                                    onUpdateTable={updateDetectedTable}
+                                                                />
+                                                            </SceneErrorBoundary>
                                                         </div>
                                                     ) : (
                                                         <div
