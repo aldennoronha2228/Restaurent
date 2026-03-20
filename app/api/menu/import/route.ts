@@ -16,6 +16,32 @@ import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import * as XLSX from 'xlsx';
 
+function isManagerRole(role: unknown): boolean {
+    const value = String(role || '').toLowerCase();
+    return value === 'owner' || value === 'admin' || value === 'super_admin';
+}
+
+async function authorizeImport(idToken: string, restaurantId: string): Promise<boolean> {
+    const decoded = await adminAuth.verifyIdToken(idToken);
+    const userRecord = await adminAuth.getUser(decoded.uid);
+    const claims = userRecord.customClaims || {};
+
+    const role = String(claims.role || '').toLowerCase();
+    if (role === 'super_admin') {
+        return true;
+    }
+
+    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
+    if (claimRestaurantId === restaurantId && isManagerRole(role)) {
+        return true;
+    }
+
+    // Fallback for stale claims: trust active owner/admin role in staff doc.
+    const staffDoc = await adminFirestore.doc(`restaurants/${restaurantId}/staff/${decoded.uid}`).get();
+    const staffRole = String(staffDoc.data()?.role || '').toLowerCase();
+    return staffDoc.exists && isManagerRole(staffRole);
+}
+
 interface ExcelRow {
     Name?: string;
     name?: string;
@@ -34,7 +60,11 @@ export async function POST(request: Request) {
     try {
         const formData = await request.formData();
         const file = formData.get('file') as File | null;
-        const tenantId = formData.get('tenantId') as string | null;
+        const tenantId = String(formData.get('tenantId') || '').trim();
+
+        if (!tenantId) {
+            return NextResponse.json({ error: 'Tenant ID required' }, { status: 400 });
+        }
 
         // Optionally, require an auth header to verify permission
         const authHeader = request.headers.get('authorization');
@@ -43,27 +73,17 @@ export async function POST(request: Request) {
         }
 
         const idToken = authHeader.replace('Bearer ', '');
-        let decodedToken;
         try {
-            decodedToken = await adminAuth.verifyIdToken(idToken);
+            const allowed = await authorizeImport(idToken, tenantId);
+            if (!allowed) {
+                return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+            }
         } catch {
             return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
         }
 
-        const userRecord = await adminAuth.getUser(decodedToken.uid);
-        const claims = userRecord.customClaims || {};
-
-        const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-        if (claims.role !== 'super_admin' && claimRestaurantId !== tenantId) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-        }
-
         if (!file) {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
-        }
-
-        if (!tenantId) {
-            return NextResponse.json({ error: 'Tenant ID required' }, { status: 400 });
         }
 
         // Read the Excel file

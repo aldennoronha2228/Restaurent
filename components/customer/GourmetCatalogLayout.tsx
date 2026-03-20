@@ -4,16 +4,11 @@ import React from 'react';
 import { motion } from 'motion/react';
 import {
     ArrowLeft,
-    ArrowRight,
     Bookmark,
-    CirclePlus,
-    Clock3,
-    Menu,
-    Plus,
     Search,
     ShoppingBag,
-    SlidersHorizontal,
-    User,
+    UserPlus,
+    X,
 } from 'lucide-react';
 import type { MenuItem as CartMenuItem } from '@/context/CartContext';
 
@@ -26,7 +21,7 @@ type CatalogBranding = {
     featuredImages: string[];
 };
 
-type CatalogItem = CartMenuItem & { available: boolean };
+type CatalogItem = CartMenuItem & { available: boolean; type?: 'veg' | 'non-veg' };
 
 type GourmetCatalogLayoutProps = {
     branding: CatalogBranding;
@@ -79,7 +74,7 @@ function formatINR(value: number): string {
     return new Intl.NumberFormat('en-IN', {
         style: 'currency',
         currency: 'INR',
-        minimumFractionDigits: 2,
+        maximumFractionDigits: 0,
     }).format(value);
 }
 
@@ -89,10 +84,21 @@ function imageFor(index: number, item: CatalogItem | undefined, featuredImages: 
     return 'https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=1200&q=80';
 }
 
-function shortText(text: string | undefined, max = 92): string {
-    if (!text) return 'Prepared with seasonal ingredients and precise technique.';
-    if (text.length <= max) return text;
-    return `${text.slice(0, max)}...`;
+function pseudoRating(seed: string): string {
+    const value = seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const rating = 3.5 + (value % 15) / 10;
+    return rating.toFixed(1);
+}
+
+function isVegItem(item: CatalogItem): boolean {
+    if (item.type === 'veg') return true;
+    if (item.type === 'non-veg') return false;
+
+    const haystack = `${item.name} ${item.description || ''} ${item.category || ''}`.toLowerCase();
+    const nonVegKeywords = [
+        'chicken', 'mutton', 'lamb', 'beef', 'pork', 'fish', 'seafood', 'prawn', 'shrimp', 'egg', 'biryani', 'kebab',
+    ];
+    return !nonVegKeywords.some((word) => haystack.includes(word));
 }
 
 export function GourmetCatalogLayout({
@@ -110,18 +116,65 @@ export function GourmetCatalogLayout({
     onSelectCategory,
     onAddToCart,
     onOpenCart,
-    onOpenOrders,
 }: GourmetCatalogLayoutProps) {
-    const heading = (activeCategory && activeCategory !== 'All' ? activeCategory : branding.catalogHeadline || 'Mains').toUpperCase();
-    const categoryStrip = categories.filter((c) => c !== 'All' && c !== activeCategory);
+    const [menuOpen, setMenuOpen] = React.useState(false);
+    const [dietFilter, setDietFilter] = React.useState<'veg' | 'nonveg'>('veg');
+    const sectionRefs = React.useRef<Record<string, HTMLElement | null>>({});
 
-    const featuredItem = items[0];
-    const standardItems = items.slice(1, 5);
-    const listItems = items.slice(5, 12);
+    const filteredByDiet = React.useMemo(() => {
+        return items.filter((item) => dietFilter === 'veg' ? isVegItem(item) : !isVegItem(item));
+    }, [items, dietFilter]);
+
+    const groupedSections = React.useMemo(() => {
+        const ordered = categories.filter((category) => category !== 'All');
+        const sections = ordered
+            .map((category) => ({
+                category,
+                items: filteredByDiet.filter((item) => item.category === category),
+            }))
+            .filter((section) => section.items.length > 0);
+
+        const known = new Set(sections.map((section) => section.category));
+        const extras = filteredByDiet
+            .filter((item) => !known.has(item.category))
+            .reduce<Record<string, CatalogItem[]>>((acc, item) => {
+                const key = item.category || 'Others';
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(item);
+                return acc;
+            }, {});
+
+        return [...sections, ...Object.entries(extras).map(([category, list]) => ({ category, items: list }))];
+    }, [categories, filteredByDiet]);
+
+    const heading = `${dietFilter === 'veg' ? 'Veg Menu' : 'Non-Veg Menu'}`;
+
+    const itemList = filteredByDiet.slice(0, 24);
+
+    const categoryCounts = React.useMemo(() => {
+        const preset = categories.filter((category) => category !== 'All');
+        const countsFromAllItems = preset.map((category) => ({
+            category,
+            count: items.filter((item) => item.category === category).length,
+        }));
+
+        // Include any legacy item categories not present in preset list at the end.
+        const presetSet = new Set(preset.map((c) => c.toLowerCase()));
+        const extraCategories = Array.from(new Set(
+            items
+                .map((item) => String(item.category || '').trim())
+                .filter((category) => category && !presetSet.has(category.toLowerCase()))
+        )).map((category) => ({
+            category,
+            count: items.filter((item) => item.category === category).length,
+        }));
+
+        return [...countsFromAllItems, ...extraCategories];
+    }, [categories, items]);
 
     const selectionLabel = decodeBase64(B64_STRINGS[0]);
     const checkoutLabel = decodeBase64(B64_STRINGS[1]);
-    const addSelectionLabel = decodeBase64(B64_STRINGS[2]);
+    const addSelectionLabel = 'ADD';
 
     return (
         <div
@@ -131,166 +184,120 @@ export function GourmetCatalogLayout({
                 fontFamily: branding.fontFamily,
             }}
         >
-            <div className="mx-auto min-h-screen w-full max-w-md pb-44 md:max-w-3xl md:pb-36">
-                <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/70 px-4 pb-4 pt-5 backdrop-blur-sm md:px-6">
-                    <div className="mb-5 flex items-center justify-between">
-                        <button
-                            onClick={onBack}
-                            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
-                            aria-label="Back"
-                        >
-                            <ArrowLeft className="h-5 w-5" />
-                        </button>
-                        <div className="flex items-center gap-2">
+            <div className="mx-auto min-h-screen w-full max-w-md pb-28 md:max-w-3xl md:pb-20">
+                <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/95 px-4 pb-3 pt-3 backdrop-blur-sm md:px-6">
+                    <div className="mb-3 flex items-center gap-2">
+                        <div className="flex h-12 flex-1 items-center rounded-2xl border border-slate-200 bg-white px-2 shadow-sm">
+                            <button
+                                onClick={onBack}
+                                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+                                aria-label="Back"
+                            >
+                                <ArrowLeft className="h-5 w-5" />
+                            </button>
+                            <p className="ml-1 flex-1 truncate text-sm font-medium text-slate-500">
+                                Search dishes...
+                            </p>
                             <button
                                 onClick={onSearch}
-                                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
+                                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
                                 aria-label="Search"
                             >
                                 <Search className="h-5 w-5" />
                             </button>
-                            <button
-                                onClick={onFilter}
-                                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
-                                aria-label="Filter"
-                            >
-                                <SlidersHorizontal className="h-5 w-5" />
-                            </button>
                         </div>
+                        <button
+                            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700"
+                            aria-label="Profile"
+                        >
+                            <UserPlus className="h-5 w-5" />
+                        </button>
                     </div>
 
-                    <div className="space-y-3">
-                        <h1
-                            className="text-[44px] font-black uppercase leading-none tracking-tight text-black md:text-[56px]"
-                            style={{ fontFamily: 'Playfair Display, Georgia, Times New Roman, serif' }}
+                    <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <button
+                            onClick={() => setDietFilter('veg')}
+                            className={`flex min-w-[132px] items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold shadow-sm ${dietFilter === 'veg' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-700'}`}
                         >
-                            {heading}
-                        </h1>
-
-                        <div className="flex items-center gap-5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                            {categoryStrip.map((category) => (
-                                <button
-                                    key={category}
-                                    onClick={() => onSelectCategory(category)}
-                                    className="whitespace-nowrap text-sm font-semibold uppercase tracking-[0.14em] text-slate-400 transition hover:text-slate-600"
-                                >
-                                    {category}
-                                </button>
-                            ))}
-                        </div>
+                            <span className="inline-block h-4 w-4 rounded-full border border-emerald-500" />
+                            <span>Veg</span>
+                        </button>
+                        <button
+                            onClick={() => setDietFilter('nonveg')}
+                            className={`flex min-w-[132px] items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold shadow-sm ${dietFilter === 'nonveg' ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200 bg-white text-slate-700'}`}
+                        >
+                            <span className="inline-block h-4 w-4 rounded border border-rose-400" />
+                            <span>Non-Veg</span>
+                        </button>
                     </div>
                 </header>
 
-                <main className="space-y-5 px-4 py-5 md:px-6">
+                <main className="space-y-4 px-4 py-4 md:px-6">
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-800 md:text-3xl">{heading}</h2>
+
                     {loading ? (
                         <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading menu...</div>
-                    ) : !featuredItem ? (
+                    ) : groupedSections.length === 0 ? (
                         <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">No menu items available.</div>
                     ) : (
-                        <>
-                            <motion.section
-                                initial={{ opacity: 0, y: 16 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm"
-                            >
-                                <div className="aspect-[16/11] w-full overflow-hidden">
-                                    <img
-                                        src={imageFor(0, featuredItem, branding.featuredImages)}
-                                        alt={featuredItem.name}
-                                        className="h-full w-full object-cover"
-                                    />
-                                </div>
-                                <div className="space-y-3 p-5">
-                                    <div className="flex items-end justify-between gap-3">
-                                        <h2 className="text-2xl font-black tracking-tight text-black" style={{ fontFamily: 'Playfair Display, Georgia, serif' }}>
-                                            {featuredItem.name}
-                                        </h2>
-                                        <p className="text-lg font-black text-black">{formatINR(featuredItem.price)}</p>
-                                    </div>
-                                    <p className="text-sm leading-6 text-slate-500">{shortText(featuredItem.description, 160)}</p>
-                                    <button
-                                        onClick={() => onAddToCart(featuredItem)}
-                                        disabled={!featuredItem.available}
-                                        className="w-full rounded-full border border-slate-200 bg-white py-3 text-center text-[11px] font-bold tracking-[0.16em] text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
-                                    >
-                                        {addSelectionLabel}
-                                    </button>
-                                </div>
-                            </motion.section>
-
-                            <section className="grid grid-cols-2 gap-3">
-                                {standardItems.map((item, idx) => (
-                                    <motion.article
-                                        key={item.id}
-                                        initial={{ opacity: 0, y: 14 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.04 + 0.1 }}
-                                        className="overflow-hidden rounded-3xl border border-slate-200 bg-white"
-                                    >
-                                        <div className="aspect-[4/5] w-full overflow-hidden">
-                                            <img
-                                                src={imageFor(idx + 1, item, branding.featuredImages)}
-                                                alt={item.name}
-                                                className="h-full w-full object-cover"
-                                            />
-                                        </div>
-                                        <div className="space-y-2 p-3">
-                                            <h3 className="line-clamp-1 text-sm font-bold text-black">{item.name}</h3>
-                                            <p className="line-clamp-2 text-xs text-slate-500">{shortText(item.description, 72)}</p>
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm font-bold text-black">{formatINR(item.price)}</span>
-                                                <button
-                                                    onClick={() => onAddToCart(item)}
-                                                    disabled={!item.available}
-                                                    className="rounded-full border border-slate-200 p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                                                    aria-label={`Add ${item.name}`}
-                                                >
-                                                    <Plus className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </motion.article>
-                                ))}
-                            </section>
-
-                            <section className="space-y-3">
-                                {listItems.map((item, idx) => (
-                                    <motion.article
-                                        key={item.id}
-                                        initial={{ opacity: 0, y: 12 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.04 + 0.2 }}
-                                        className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3"
-                                    >
-                                        <img
-                                            src={imageFor(idx + 5, item, branding.featuredImages)}
-                                            alt={item.name}
-                                            className="h-20 w-20 rounded-xl object-cover"
-                                        />
-                                        <div className="min-w-0 flex-1">
-                                            <h4 className="truncate text-sm font-bold text-black">{item.name}</h4>
-                                            <p className="line-clamp-2 text-xs text-slate-500">{shortText(item.description, 68)}</p>
-                                        </div>
-                                        <div className="flex flex-col items-end gap-1">
-                                            <p className="text-sm font-bold text-black">{formatINR(item.price)}</p>
-                                            <button
-                                                onClick={() => onAddToCart(item)}
-                                                disabled={!item.available}
-                                                className="rounded-full border border-slate-200 p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                                                aria-label={`Add ${item.name}`}
+                        <div className="space-y-8">
+                            {groupedSections.map((section) => (
+                                <section
+                                    key={section.category}
+                                    ref={(el) => { sectionRefs.current[section.category] = el; }}
+                                    className="space-y-4"
+                                >
+                                    <h3 className="text-xl font-bold tracking-tight text-slate-800 md:text-2xl">
+                                        {section.category} ({section.items.length})
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {section.items.slice(0, 24).map((item, idx) => (
+                                            <motion.article
+                                                key={item.id}
+                                                initial={{ opacity: 0, y: 12 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ delay: idx * 0.03 }}
+                                                className="space-y-2"
                                             >
-                                                <CirclePlus className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    </motion.article>
-                                ))}
-                            </section>
-                        </>
+                                                <div className="aspect-[4/3] overflow-hidden rounded-3xl bg-white shadow-sm">
+                                                    <img
+                                                        src={imageFor(idx, item, branding.featuredImages)}
+                                                        alt={item.name}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between gap-1 text-[13px] font-semibold text-slate-500">
+                                                    <span className="truncate rounded-full bg-rose-50 px-2 py-0.5 text-rose-600">
+                                                        {item.category || section.category}
+                                                    </span>
+                                                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">★ {pseudoRating(item.name)}</span>
+                                                </div>
+
+                                                <h4 className="line-clamp-2 text-lg font-bold leading-tight text-slate-900 md:text-xl">{item.name}</h4>
+
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-lg font-bold leading-none text-slate-900 md:text-xl">₹{Math.round(item.price)}</span>
+                                                    <button
+                                                        onClick={() => onAddToCart(item)}
+                                                        disabled={!item.available}
+                                                        className="rounded-xl border border-slate-300 bg-white px-5 py-1.5 text-lg font-bold leading-none text-emerald-600 shadow-sm transition hover:bg-emerald-50 disabled:opacity-50 md:text-base"
+                                                        aria-label={`Add ${item.name}`}
+                                                    >
+                                                        {addSelectionLabel}
+                                                    </button>
+                                                </div>
+                                            </motion.article>
+                                        ))}
+                                    </div>
+                                </section>
+                            ))}
+                        </div>
                     )}
                 </main>
 
                 {totalItems > 0 ? (
-                    <div className="fixed inset-x-0 bottom-20 z-50 px-4 md:bottom-24 md:px-6">
+                    <div className="fixed inset-x-0 bottom-4 z-50 px-4 md:px-6">
                         <div className="mx-auto flex w-full max-w-md items-center justify-between rounded-full bg-[#232528]/90 px-3 py-2 text-white shadow-xl backdrop-blur-sm md:max-w-3xl">
                             <div className="flex items-center gap-2.5 pl-2">
                                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10">
@@ -306,32 +313,56 @@ export function GourmetCatalogLayout({
                                 className="inline-flex items-center gap-1 rounded-full bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-900"
                             >
                                 {checkoutLabel}
-                                <ArrowRight className="h-3.5 w-3.5" />
                             </button>
                         </div>
                     </div>
                 ) : null}
 
-                <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200/80 bg-white/80 px-4 py-3 backdrop-blur-sm md:px-6">
-                    <div className="mx-auto grid w-full max-w-md grid-cols-4 md:max-w-3xl">
-                        <button className="flex flex-col items-center gap-1 text-slate-700" aria-label="Menu">
-                            <Menu className="h-5 w-5" />
-                            <span className="text-[10px] font-semibold">Menu</span>
-                        </button>
-                        <button className="flex flex-col items-center gap-1 text-slate-400" aria-label="Saved">
-                            <Bookmark className="h-5 w-5" />
-                            <span className="text-[10px] font-semibold">Saved</span>
-                        </button>
-                        <button onClick={onOpenOrders} className="flex flex-col items-center gap-1 text-slate-500" aria-label="Orders">
-                            <Clock3 className="h-5 w-5" />
-                            <span className="text-[10px] font-semibold">Orders</span>
-                        </button>
-                        <button className="flex flex-col items-center gap-1 text-slate-400" aria-label="Profile">
-                            <User className="h-5 w-5" />
-                            <span className="text-[10px] font-semibold">Profile</span>
-                        </button>
+                <button
+                    onClick={() => setMenuOpen(true)}
+                    className="fixed bottom-5 right-4 z-50 flex h-16 w-16 flex-col items-center justify-center rounded-full bg-[#020919] text-white shadow-2xl md:right-8"
+                    aria-label="Open menu categories"
+                >
+                    <Bookmark className="h-5 w-5" />
+                    <span className="mt-0.5 text-[9px] font-bold tracking-[0.08em]">MENU</span>
+                </button>
+
+                {menuOpen ? (
+                    <div className="fixed inset-0 z-[60] bg-black/45" onClick={() => setMenuOpen(false)}>
+                        <div
+                            className="absolute inset-x-4 bottom-5 max-h-[50vh] overflow-y-auto rounded-[24px] bg-[#01081A] p-4 text-white shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="mb-2 flex items-center justify-between">
+                                <p className="text-base font-semibold">Menu Categories</p>
+                                <button
+                                    onClick={() => setMenuOpen(false)}
+                                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10"
+                                    aria-label="Close categories"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-1">
+                                {categoryCounts.map((entry) => (
+                                    <button
+                                        key={entry.category}
+                                        onClick={() => {
+                                            onSelectCategory(entry.category);
+                                            sectionRefs.current[entry.category]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                            setMenuOpen(false);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left hover:bg-white/5"
+                                    >
+                                        <span className="text-lg font-medium leading-tight md:text-base">{entry.category}</span>
+                                        <span className="text-lg font-medium leading-tight text-slate-300 md:text-base">{entry.count}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
-                </nav>
+                ) : null}
 
                 {!tableId ? (
                     <div className="fixed left-1/2 top-2 z-50 -translate-x-1/2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">

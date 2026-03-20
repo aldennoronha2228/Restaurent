@@ -61,7 +61,7 @@ const SYSTEM_PROMPT = [
     'Behavior rules:',
     '- Assume full context of this QR Hotel Dashboard when context is available.',
     '- If data is missing, ask one clarifying question and still offer best-practice guidance.',
-    '- Never claim actions were performed in user systems.',
+    '- Do not claim inability to perform dashboard actions. If details are missing, ask for exact fields needed.',
 ].join('\n');
 
 const MODEL_CANDIDATES = [
@@ -69,6 +69,29 @@ const MODEL_CANDIDATES = [
     'gemini-2.0-flash',
     'gemini-flash-latest',
 ];
+
+type ProviderReply = {
+    rawReply: string;
+    selectedModel: string;
+};
+
+type AuthorizedRestaurant = {
+    restaurantId: string;
+    uid: string;
+    role: string;
+};
+
+type ParsedAction =
+    | { type: 'add_table'; seats: number; name?: string }
+    | { type: 'add_menu_item'; name: string; price: number; category: string; foodType: 'veg' | 'non-veg'; imageUrl?: string }
+    | { type: 'arrange_tables_square' }
+    | { type: 'unknown' };
+
+type ActionExecution = {
+    ok: boolean;
+    message: string;
+    data?: Record<string, unknown>;
+};
 
 function resolveAiTier(subscriptionTierRaw: unknown): AiTier {
     const tier = String(subscriptionTierRaw || '').trim().toLowerCase();
@@ -108,7 +131,7 @@ function buildUsage(tier: AiTier, used: number): AiUsage {
     };
 }
 
-async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: string): Promise<{ restaurantId: string } | NextResponse> {
+async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: string): Promise<AuthorizedRestaurant | NextResponse> {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -128,7 +151,250 @@ async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: s
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    return { restaurantId };
+    return {
+        restaurantId,
+        uid: user.uid,
+        role: String(claims.role || ''),
+    };
+}
+
+function parseActionFromText(text: string): ParsedAction {
+    const normalized = text.trim();
+    if (!normalized) return { type: 'unknown' };
+
+    const lower = normalized.toLowerCase();
+
+    const tableMatch =
+        lower.match(/\badd\b.*\btable\b.*?(\d{1,2})\s*(?:[- ]?\s*(?:seat|seats|seater|pax|people|persons?))\b/i) ||
+        lower.match(/\badd\b.*\btable\b.*\bfor\b\s*(\d{1,2})\b/i) ||
+        lower.match(/\b(\d{1,2})\s*[- ]?\s*(?:seat|seats|seater)\b.*\btable\b/i);
+    if (tableMatch) {
+        const seats = Number(tableMatch[1]);
+        const nameMatch = normalized.match(/name\s*[:=]\s*([^,\n]+)/i);
+        const name = nameMatch?.[1]?.trim();
+        if (Number.isFinite(seats) && seats > 0) {
+            return { type: 'add_table', seats: Math.min(20, Math.max(1, Math.floor(seats))), name };
+        }
+    }
+
+    if (lower.includes('add menu item') || lower.includes('add item to menu') || lower.startsWith('add item')) {
+        const name = (normalized.match(/name\s*[:=]\s*([^,\n]+)/i)?.[1] || '').trim();
+        const priceText = (normalized.match(/price\s*[:=]?\s*([0-9]+(?:\.[0-9]{1,2})?)/i)?.[1] || '').trim();
+        const category = (normalized.match(/category\s*[:=]\s*([^,\n]+)/i)?.[1] || '').trim();
+        const typeText = (normalized.match(/type\s*[:=]\s*(veg|non-veg|nonveg)/i)?.[1] || 'veg').trim().toLowerCase();
+        const imageUrl = (normalized.match(/image\s*[:=]\s*(https?:\/\/[^\s,]+)/i)?.[1] || '').trim();
+
+        const price = Number(priceText);
+        if (name && Number.isFinite(price) && price > 0 && category) {
+            return {
+                type: 'add_menu_item',
+                name,
+                price,
+                category,
+                foodType: typeText.includes('non') ? 'non-veg' : 'veg',
+                imageUrl: imageUrl || undefined,
+            };
+        }
+    }
+
+    const squareIntent =
+        (/(arrange|make|set|organize|place)\b/.test(lower) && /(square)\b/.test(lower) && /(table|tables|floor plan|layout)\b/.test(lower)) ||
+        (/\bsquare\b/.test(lower) && /\btable(s)?\b/.test(lower));
+    if (squareIntent) {
+        return { type: 'arrange_tables_square' };
+    }
+
+    return { type: 'unknown' };
+}
+
+function looksLikeControlIntent(text: string): boolean {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return false;
+    return /(add|create|insert|update|edit|delete|remove|arrange|make|set|organize|place)\b/.test(normalized)
+        && /(table|tables|menu item|item|menu|floor plan|layout|square)\b/.test(normalized);
+}
+
+function buildNextTablePosition(tableCount: number): { x: number; y: number } {
+    const columns = 4;
+    const col = tableCount % columns;
+    const row = Math.floor(tableCount / columns);
+    return {
+        x: 80 + col * 150,
+        y: 80 + row * 140,
+    };
+}
+
+function buildSquarePositions(count: number): Array<{ x: number; y: number }> {
+    if (count <= 0) return [];
+    if (count === 1) return [{ x: 280, y: 220 }];
+
+    const sideCount = Math.ceil(count / 4) + 1;
+    const gap = 120;
+    const x0 = 120;
+    const y0 = 100;
+    const x1 = x0 + gap * (sideCount - 1);
+    const y1 = y0 + gap * (sideCount - 1);
+
+    const positions: Array<{ x: number; y: number }> = [];
+
+    // Top edge (left -> right)
+    for (let i = 0; i < sideCount; i++) {
+        positions.push({ x: x0 + i * gap, y: y0 });
+    }
+
+    // Right edge (top -> bottom), skip top-right corner
+    for (let i = 1; i < sideCount; i++) {
+        positions.push({ x: x1, y: y0 + i * gap });
+    }
+
+    // Bottom edge (right -> left), skip bottom-right corner
+    for (let i = sideCount - 2; i >= 0; i--) {
+        positions.push({ x: x0 + i * gap, y: y1 });
+    }
+
+    // Left edge (bottom -> top), skip both corners
+    for (let i = sideCount - 2; i >= 1; i--) {
+        positions.push({ x: x0, y: y0 + i * gap });
+    }
+
+    return positions.slice(0, count);
+}
+
+async function executeAction(action: ParsedAction, auth: AuthorizedRestaurant): Promise<ActionExecution | null> {
+    if (action.type === 'unknown') return null;
+
+    if (action.type === 'add_table') {
+        const layoutRef = adminFirestore.doc(`restaurants/${auth.restaurantId}/settings/floor_layout`);
+        const layoutSnap = await layoutRef.get();
+        const currentTables = Array.isArray(layoutSnap.data()?.tables) ? layoutSnap.data()?.tables : [];
+
+        const existingNumbers = currentTables
+            .map((t: any) => String(t?.id || '').match(/(\d+)/)?.[1])
+            .map((n: string | undefined) => (n ? Number(n) : NaN))
+            .filter((n: number) => Number.isFinite(n));
+
+        const nextNum = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+        const nextId = `T-${String(nextNum).padStart(2, '0')}`;
+        const nextName = action.name || `Table ${nextNum}`;
+        const pos = buildNextTablePosition(currentTables.length);
+
+        const nextTable = {
+            id: nextId,
+            name: nextName,
+            seats: action.seats,
+            x: pos.x,
+            y: pos.y,
+            status: 'available',
+        };
+
+        await layoutRef.set(
+            {
+                tables: [...currentTables, nextTable],
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedBy: auth.uid,
+            },
+            { merge: true }
+        );
+
+        return {
+            ok: true,
+            message: `Done. Added ${nextName} (${action.seats} seats) with id ${nextId}.`,
+            data: nextTable,
+        };
+    }
+
+    if (action.type === 'add_menu_item') {
+        const categoriesRef = adminFirestore.collection(`restaurants/${auth.restaurantId}/categories`);
+        const categoriesSnap = await categoriesRef.get();
+
+        let categoryId = '';
+        let categoryName = action.category;
+        let maxDisplayOrder = 0;
+
+        categoriesSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data() as any;
+            const name = String(data?.name || '');
+            if (name.toLowerCase() === action.category.toLowerCase()) {
+                categoryId = docSnap.id;
+                categoryName = name;
+            }
+            const order = Number(data?.display_order || 0);
+            if (Number.isFinite(order) && order > maxDisplayOrder) {
+                maxDisplayOrder = order;
+            }
+        });
+
+        if (!categoryId) {
+            const newCategoryRef = categoriesRef.doc();
+            await newCategoryRef.set({
+                name: action.category,
+                display_order: maxDisplayOrder + 1,
+                created_at: FieldValue.serverTimestamp(),
+            });
+            categoryId = newCategoryRef.id;
+        }
+
+        const menuItemRef = adminFirestore.collection(`restaurants/${auth.restaurantId}/menu_items`).doc();
+        await menuItemRef.set({
+            name: action.name,
+            price: action.price,
+            category_id: categoryId,
+            category_name: categoryName,
+            type: action.foodType,
+            image_url: action.imageUrl || null,
+            available: true,
+            created_at: FieldValue.serverTimestamp(),
+        });
+
+        return {
+            ok: true,
+            message: `Done. Added menu item ${action.name} in ${categoryName} at ${action.price}.`,
+            data: {
+                id: menuItemRef.id,
+                name: action.name,
+                category: categoryName,
+                price: action.price,
+                type: action.foodType,
+            },
+        };
+    }
+
+    if (action.type === 'arrange_tables_square') {
+        const layoutRef = adminFirestore.doc(`restaurants/${auth.restaurantId}/settings/floor_layout`);
+        const layoutSnap = await layoutRef.get();
+        const currentTables = Array.isArray(layoutSnap.data()?.tables) ? layoutSnap.data()?.tables : [];
+
+        if (currentTables.length === 0) {
+            return {
+                ok: false,
+                message: 'No tables found yet. Add at least one table first, then I can arrange them in a square.',
+            };
+        }
+
+        const positions = buildSquarePositions(currentTables.length);
+        const nextTables = currentTables.map((t: any, idx: number) => ({
+            ...t,
+            x: positions[idx]?.x ?? t?.x ?? 0,
+            y: positions[idx]?.y ?? t?.y ?? 0,
+        }));
+
+        await layoutRef.set(
+            {
+                tables: nextTables,
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedBy: auth.uid,
+            },
+            { merge: true }
+        );
+
+        return {
+            ok: true,
+            message: `Done. Arranged ${nextTables.length} tables in a square layout.`,
+            data: { arrangedCount: nextTables.length },
+        };
+    }
+
+    return null;
 }
 
 function buildContextPrompt(context: DashboardContext | null): string {
@@ -206,10 +472,161 @@ function normalizeAssistantReply(raw: string): string {
     return [intro, ...remaining].join('\n');
 }
 
+async function requestOpenAiReply(apiKey: string, model: string, messages: ChatMessage[], contextPrompt: string): Promise<ProviderReply> {
+    const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+            model,
+            temperature: 0.5,
+            top_p: 0.85,
+            max_tokens: 420,
+            messages: [
+                {
+                    role: 'system',
+                    content: contextPrompt ? `${SYSTEM_PROMPT}\n\n${contextPrompt}` : SYSTEM_PROMPT,
+                },
+                ...messages.map((m) => ({ role: m.role, content: m.content })),
+            ],
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        if (response.status === 429) {
+            throw Object.assign(new Error('OpenAI quota exceeded for this API key.'), {
+                statusCode: 429,
+                errorCode: 'quota_exceeded',
+                details: errorText.slice(0, 500),
+            });
+        }
+
+        throw Object.assign(new Error(`OpenAI request failed: ${response.status}`), {
+            statusCode: response.status >= 400 && response.status < 600 ? response.status : 502,
+            details: errorText.slice(0, 500),
+        });
+    }
+
+    const data: any = await response.json();
+    const rawReply =
+        data?.choices?.[0]?.message?.content?.trim() ||
+        'I can help with menu optimization, metrics explanation, QR troubleshooting, and staff advice. What would you like to improve first?';
+
+    return {
+        rawReply,
+        selectedModel: data?.model || model,
+    };
+}
+
+function resolveOpenAiModelCandidates(): string[] {
+    const raw = process.env.OPENAI_MODEL_CANDIDATES || process.env.OPENAI_MODEL || 'gpt-5.2-codex';
+    const unique = new Set(
+        raw
+            .split(',')
+            .map((m) => m.trim())
+            .filter(Boolean)
+    );
+    return Array.from(unique);
+}
+
+async function requestGeminiReply(apiKey: string, messages: ChatMessage[], contextPrompt: string): Promise<ProviderReply> {
+    const contents = messages.map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+    }));
+
+    let geminiResponse: Response | null = null;
+    let selectedModel = '';
+    let lastErrorDetails = '';
+
+    for (const modelName of MODEL_CANDIDATES) {
+        const candidateResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    systemInstruction: {
+                        parts: [{ text: contextPrompt ? `${SYSTEM_PROMPT}\n\n${contextPrompt}` : SYSTEM_PROMPT }],
+                    },
+                    contents,
+                    generationConfig: {
+                        temperature: 0.5,
+                        topP: 0.85,
+                        maxOutputTokens: 420,
+                    },
+                }),
+            }
+        );
+
+        if (candidateResponse.ok) {
+            geminiResponse = candidateResponse;
+            selectedModel = modelName;
+            break;
+        }
+
+        const errorText = await candidateResponse.text();
+        lastErrorDetails = `${modelName}: ${candidateResponse.status} ${errorText.slice(0, 240)}`;
+
+        // 404 usually means model isn't available for this API key.
+        // Keep trying fallback models.
+        if (candidateResponse.status !== 404) {
+            const mappedStatus = candidateResponse.status >= 400 && candidateResponse.status < 600
+                ? candidateResponse.status
+                : 502;
+
+            if (candidateResponse.status === 429) {
+                throw Object.assign(new Error('Gemini quota exceeded for this API key.'), {
+                    statusCode: 429,
+                    errorCode: 'quota_exceeded',
+                    details: 'Please check Gemini API billing/quota and retry after quota resets.',
+                });
+            }
+
+            throw Object.assign(new Error(`Gemini request failed: ${candidateResponse.status}`), {
+                statusCode: mappedStatus,
+                details: lastErrorDetails,
+            });
+        }
+    }
+
+    if (!geminiResponse) {
+        throw Object.assign(new Error('No supported Gemini model found for this API key.'), {
+            statusCode: 502,
+            details: lastErrorDetails,
+        });
+    }
+
+    const data: any = await geminiResponse.json();
+    const rawReply =
+        data?.candidates?.[0]?.content?.parts
+            ?.map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
+            .join('\n')
+            .trim() ||
+        'I can help with menu optimization, metrics explanation, QR troubleshooting, and staff advice. What would you like to improve first?';
+
+    return {
+        rawReply,
+        selectedModel: selectedModel || MODEL_CANDIDATES[0],
+    };
+}
+
 export async function POST(request: NextRequest) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        return NextResponse.json({ error: 'GEMINI_API_KEY is not configured.' }, { status: 500 });
+    const openAiApiKey = process.env.OPENAI_API_KEY;
+    const openAiModelCandidates = resolveOpenAiModelCandidates();
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+
+    if (!openAiApiKey && !geminiApiKey) {
+        return NextResponse.json(
+            { error: 'No AI provider key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' },
+            { status: 500 }
+        );
     }
 
     try {
@@ -266,87 +683,88 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'At least one message is required.' }, { status: 400 });
         }
 
-        const contents = messages.map((m) => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }],
-        }));
-
-        let geminiResponse: Response | null = null;
-        let selectedModel = '';
-        let lastErrorDetails = '';
-
-        for (const modelName of MODEL_CANDIDATES) {
-            const candidateResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
+        const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+        const parsedAction = parseActionFromText(latestUserMessage);
+        if (parsedAction.type !== 'unknown') {
+            const actionResult = await executeAction(parsedAction, auth);
+            if (actionResult) {
+                return NextResponse.json({
+                    reply: actionResult.message,
+                    usage: currentUsage,
+                    action: {
+                        type: parsedAction.type,
+                        ok: actionResult.ok,
+                        data: actionResult.data,
                     },
-                    body: JSON.stringify({
-                        systemInstruction: {
-                            parts: [{ text: contextPrompt ? `${SYSTEM_PROMPT}\n\n${contextPrompt}` : SYSTEM_PROMPT }],
-                        },
-                        contents,
-                        generationConfig: {
-                            temperature: 0.5,
-                            topP: 0.85,
-                            maxOutputTokens: 420,
-                        },
-                    }),
-                }
-            );
-
-            if (candidateResponse.ok) {
-                geminiResponse = candidateResponse;
-                selectedModel = modelName;
-                break;
+                });
             }
+        }
 
-            const errorText = await candidateResponse.text();
-            lastErrorDetails = `${modelName}: ${candidateResponse.status} ${errorText.slice(0, 240)}`;
+        if (looksLikeControlIntent(latestUserMessage)) {
+            return NextResponse.json({
+                reply:
+                    'I can execute that right away. Try: "add table 4 seats", "add menu item name=Margherita Pizza, price=299, category=Pizza, type=veg", or "arrange tables in a square".',
+                usage: currentUsage,
+                action: {
+                    type: 'clarification',
+                    ok: false,
+                },
+            });
+        }
 
-            // 404 usually means model isn't available for this API key.
-            // Keep trying fallback models.
-            if (candidateResponse.status !== 404) {
-                const mappedStatus = candidateResponse.status >= 400 && candidateResponse.status < 600
-                    ? candidateResponse.status
-                    : 502;
+        let providerReply: ProviderReply;
+        try {
+            if (openAiApiKey) {
+                let openAiError: any = null;
+                let resolvedReply: ProviderReply | null = null;
 
-                if (candidateResponse.status === 429) {
-                    return NextResponse.json(
-                        {
-                            error: 'Gemini quota exceeded for this API key.',
-                            code: 'quota_exceeded',
-                            details: 'Please check Gemini API billing/quota and retry after quota resets.',
-                        },
-                        { status: 429 }
-                    );
+                for (const candidateModel of openAiModelCandidates) {
+                    try {
+                        resolvedReply = await requestOpenAiReply(openAiApiKey, candidateModel, messages, contextPrompt);
+                        break;
+                    } catch (err: any) {
+                        openAiError = err;
+
+                        const status = Number(err?.statusCode || 0);
+                        const details = String(err?.details || '').toLowerCase();
+                        const message = String(err?.message || '').toLowerCase();
+                        const canTryNextModel =
+                            status === 400 ||
+                            status === 404 ||
+                            details.includes('model') ||
+                            message.includes('model');
+
+                        if (!canTryNextModel) {
+                            throw err;
+                        }
+                    }
                 }
 
+                if (!resolvedReply) {
+                    throw openAiError || new Error('No configured OpenAI model candidate succeeded.');
+                }
+
+                providerReply = resolvedReply;
+            } else if (geminiApiKey) {
+                providerReply = await requestGeminiReply(geminiApiKey, messages, contextPrompt);
+            } else {
                 return NextResponse.json(
-                    { error: `Gemini request failed: ${candidateResponse.status}`, details: lastErrorDetails },
-                    { status: mappedStatus }
+                    { error: 'No AI provider key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' },
+                    { status: 500 }
                 );
             }
-        }
-
-        if (!geminiResponse) {
+        } catch (providerError: any) {
             return NextResponse.json(
-                { error: 'No supported Gemini model found for this API key.', details: lastErrorDetails },
-                { status: 502 }
+                {
+                    error: providerError?.message || 'AI provider request failed.',
+                    code: providerError?.errorCode,
+                    details: providerError?.details,
+                },
+                { status: providerError?.statusCode || 502 }
             );
         }
 
-        const data = await geminiResponse.json();
-        const rawReply =
-            data?.candidates?.[0]?.content?.parts
-                ?.map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
-                .join('\n')
-                .trim() ||
-            'I can help with menu optimization, metrics explanation, QR troubleshooting, and staff advice. What would you like to improve first?';
-
-        const reply = normalizeAssistantReply(rawReply);
+        const reply = normalizeAssistantReply(providerReply.rawReply);
 
         const nextUsage = buildUsage(tier, dailyAiCount + 1);
         await restaurantRef.set(
@@ -355,7 +773,7 @@ export async function POST(request: NextRequest) {
                     dailyAiCount: FieldValue.increment(1),
                     dailyAiDate: todayYmd,
                     lastAiAt: FieldValue.serverTimestamp(),
-                    lastAiModel: selectedModel || MODEL_CANDIDATES[0],
+                    lastAiModel: providerReply.selectedModel,
                 },
             },
             { merge: true },

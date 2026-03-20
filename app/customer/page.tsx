@@ -22,6 +22,9 @@ interface FirestoreItem {
     image_url: string | null;
     available: boolean;
     category_id?: string;
+    category_name?: string;
+    category?: string;
+    type?: 'veg' | 'non-veg' | string;
 }
 
 type CustomerBranding = {
@@ -76,7 +79,18 @@ function normalizeBranding(raw: any): CustomerBranding {
     };
 }
 
-function toCartItem(f: FirestoreItem, categoryName: string, fallback?: CartMenuItem): CartMenuItem & { available: boolean } {
+function toCartItem(
+    f: FirestoreItem,
+    categoryName: string,
+    fallback?: CartMenuItem
+): CartMenuItem & { available: boolean; type?: 'veg' | 'non-veg' } {
+    const normalizedType = String(f.type || '').toLowerCase();
+    const type = normalizedType === 'non-veg' || normalizedType === 'nonveg'
+        ? 'non-veg'
+        : normalizedType === 'veg'
+            ? 'veg'
+            : undefined;
+
     return {
         id: f.id,
         name: f.name,
@@ -85,6 +99,7 @@ function toCartItem(f: FirestoreItem, categoryName: string, fallback?: CartMenuI
         image: f.image_url ?? fallback?.image ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
         category: categoryName ?? fallback?.category ?? 'Other',
         available: f.available ?? true,
+        type,
     };
 }
 
@@ -251,11 +266,25 @@ function CustomerMenuContent() {
                 if (cancelled) return;
 
                 // Enrich with static descriptions/images where Firestore row has none
+                const normalizedCatNames = new Set(catNames.map((c) => c.trim().toLowerCase()));
+
                 const enriched = items.map((f: FirestoreItem) => {
                     const fallback = staticItems.find(
                         si => si.name.toLowerCase() === f.name.toLowerCase()
                     );
-                    const categoryName = f.category_id ? catMap.get(f.category_id) || 'Other' : 'Other';
+                    const categoryFromId = f.category_id ? catMap.get(f.category_id) : '';
+                    const categoryFromName = String(f.category_name || '').trim();
+                    const categoryFromLegacy = String(f.category || '').trim();
+
+                    // Prefer explicit category_id mapping; only accept name/legacy if it matches an existing preset category.
+                    const categoryName = (
+                        categoryFromId ||
+                        (normalizedCatNames.has(categoryFromName.toLowerCase()) ? categoryFromName : '') ||
+                        (normalizedCatNames.has(categoryFromLegacy.toLowerCase()) ? categoryFromLegacy : '') ||
+                        fallback?.category ||
+                        catNames[0] ||
+                        'Other'
+                    );
                     return toCartItem(f, categoryName, fallback);
                 });
 
@@ -329,10 +358,6 @@ function CustomerMenuContent() {
         return () => { unsubscribe(); };
     }, [restaurantId]);
 
-    const filteredItems = activeCategory === 'All'
-        ? menuItems
-        : menuItems.filter(item => item.category === activeCategory);
-
     const effectiveBranding = previewBranding || branding;
 
     return (
@@ -341,7 +366,7 @@ function CustomerMenuContent() {
                 branding={effectiveBranding}
                 categories={categories}
                 activeCategory={activeCategory}
-                items={filteredItems}
+                items={menuItems}
                 tableId={tableId}
                 totalItems={totalItems}
                 totalPrice={totalPrice}

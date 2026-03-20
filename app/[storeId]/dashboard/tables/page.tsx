@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Download, QrCode, Trash2, Minus, Check, FolderOpen, Save, X, ZoomIn, Share2, Lock, Sparkles, Edit3, Users } from 'lucide-react';
+import { Plus, Download, QrCode, Trash2, Minus, Check, FolderOpen, Save, X, ZoomIn, Share2, Lock, Sparkles, Edit3, Users, Camera, ScanLine, Video, Upload } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { cn } from '@/lib/utils';
 import { setTables as setSharedTables, type Table } from '@/data/sharedData';
 import { useAuth } from '@/context/AuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { ProFeatureGate, ProBadge } from '@/components/dashboard/ProFeatureGate';
-import { adminAuth, tenantAuth } from '@/lib/firebase';
+import { adminAuth, db, tenantAuth } from '@/lib/firebase';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 const MENU_CUSTOMER_PATH = process.env.NEXT_PUBLIC_MENU_CUSTOMER_PATH ?? '/customer';
 
@@ -60,6 +61,8 @@ function getTableMenuUrl(baseUrl: string, tableId: string, restaurantId?: string
 interface Wall { id: string; x: number; y: number; width: number; height: number; orientation: 'horizontal' | 'vertical' }
 interface Desk { id: string; x: number; y: number; width: number; height: number }
 interface FloorPlan { id: string; name: string; tables: Table[]; walls: Wall[]; desks: Desk[] }
+type AiLayoutTable = { id: string; type: 'standard' | 'booth' | 'high-top'; x: number; y: number };
+type DetectedTable3D = AiLayoutTable & { seats: number };
 
 function QRPreviewModal({ table, onClose, baseUrl, restaurantId }: { table: Table; onClose: () => void; baseUrl: string; restaurantId?: string | null }) {
     const url = getTableMenuUrl(baseUrl, table.id, restaurantId);
@@ -124,6 +127,147 @@ function QRPreviewModal({ table, onClose, baseUrl, restaurantId }: { table: Tabl
                         </motion.button>
                     </div>
                 </div>
+            </motion.div>
+        </motion.div>
+    );
+}
+
+function CameraModal({
+    open,
+    onClose,
+    onCapture,
+    onUseUpload,
+}: {
+    open: boolean;
+    onClose: () => void;
+    onCapture: (payload: { blob: Blob; previewUrl: string }) => void;
+    onUseUpload: () => void;
+}) {
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const [cameraError, setCameraError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!open) return;
+
+        let active = true;
+
+        const startCamera = async () => {
+            if (!navigator?.mediaDevices?.getUserMedia) {
+                setCameraError('Camera access is not available in this browser/session. Use photo upload instead.');
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: false,
+                });
+
+                if (!active) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    return;
+                }
+
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    await videoRef.current.play().catch(() => {
+                        // no-op: user gesture may be required in some browsers
+                    });
+                }
+            } catch {
+                setCameraError('Camera permission denied or unavailable. You can continue with photo upload.');
+            }
+        };
+
+        startCamera();
+
+        return () => {
+            active = false;
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach((t) => t.stop());
+                streamRef.current = null;
+            }
+        };
+    }, [open, onClose]);
+
+    const capture = useCallback(() => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas) return;
+
+        const width = video.videoWidth || 1280;
+        const height = video.videoHeight || 720;
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(video, 0, 0, width, height);
+
+        const previewUrl = canvas.toDataURL('image/jpeg', 0.92);
+        canvas.toBlob((blob) => {
+            if (!blob) return;
+            onCapture({ blob, previewUrl });
+        }, 'image/jpeg', 0.92);
+    }, [onCapture]);
+
+    if (!open) return null;
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={onClose}
+        >
+            <motion.div
+                initial={{ scale: 0.96, y: 10 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.96, y: 10 }}
+                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-950 overflow-hidden shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="h-14 px-4 border-b border-white/10 flex items-center justify-between text-white">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                        <Video className="w-4 h-4" />
+                        Live Camera Capture
+                    </div>
+                    <button onClick={onClose} className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+
+                <div className="relative aspect-video bg-black">
+                    <video ref={videoRef} className={cn('w-full h-full object-cover', cameraError && 'opacity-30')} playsInline muted autoPlay />
+                    {cameraError && (
+                        <div className="absolute inset-0 flex items-center justify-center p-4">
+                            <div className="max-w-md w-full rounded-xl border border-amber-300 bg-amber-50 text-amber-800 p-4 text-center">
+                                <p className="text-sm font-medium">{cameraError}</p>
+                                <button
+                                    onClick={onUseUpload}
+                                    className="mt-3 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium"
+                                >
+                                    Use Photo Upload
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-white/10 flex items-center justify-end gap-2 bg-slate-900">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-800 text-sm">
+                        Cancel
+                    </button>
+                    <button onClick={capture} disabled={!!cameraError} className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-md shadow-orange-500/30 flex items-center gap-2">
+                        <Camera className="w-4 h-4" />
+                        Capture
+                    </button>
+                </div>
+                <canvas ref={canvasRef} className="hidden" />
             </motion.div>
         </motion.div>
     );
@@ -320,7 +464,7 @@ function TableManagementModal({
                     <div className="space-y-2">
                         {tables.map((table, index) => (
                             <motion.div
-                                key={table.id}
+                                key={table.id || `table-${index}`}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.02 }}
@@ -527,12 +671,13 @@ const statusConfig = {
     reserved: { color: 'bg-amber-100', border: 'border-amber-400', text: 'text-amber-700' },
 };
 
-function DraggableTable({ table, onUpdate }: { table: Table; onUpdate: (id: string, x: number, y: number) => void }) {
+function DraggableTable({ table, onUpdate, isActive, onActivate }: { table: Table; onUpdate: (id: string, x: number, y: number) => void; isActive?: boolean; onActivate?: (id: string) => void }) {
     const cfg = statusConfig[table.status];
     return (
         <motion.div
             drag
             dragMomentum={false}
+            onPointerDown={() => onActivate?.(table.id)}
             onDragEnd={(_, info) => onUpdate(table.id, Math.max(0, table.x + info.offset.x), Math.max(0, table.y + info.offset.y))}
             onPanEnd={(_, info) => {
                 // Failsafe for if simple drag offset math breaks on zoomed Windows monitors
@@ -543,9 +688,15 @@ function DraggableTable({ table, onUpdate }: { table: Table; onUpdate: (id: stri
             animate={{ x: table.x, y: table.y }}
             transition={{ type: 'spring', bounce: 0, duration: 0.1 }}
             whileHover={{ scale: 1.05 }}
-            whileDrag={{ scale: 1.1, zIndex: 50, opacity: 0.8 }}
+            whileDrag={{ scale: 1.1, zIndex: 50, opacity: 0.9 }}
             style={{ position: 'absolute', left: 0, top: 0, cursor: 'grab' }}
-            className={cn('w-20 h-20 rounded-xl border-2 flex flex-col items-center justify-center shadow-lg transition-colors', cfg.color, cfg.border, cfg.text)}
+            className={cn(
+                'w-20 h-20 rounded-lg border-2 flex flex-col items-center justify-center shadow-md transition-colors',
+                cfg.color,
+                cfg.border,
+                cfg.text,
+                isActive && 'border-orange-500 ring-2 ring-orange-300/80 shadow-md shadow-orange-500/25'
+            )}
         >
             <span className="text-xs font-bold pointer-events-none">{table.id}</span>
             <span className="text-[10px] opacity-70 pointer-events-none">{table.seats}🪑</span>
@@ -596,20 +747,35 @@ function DraggableDesk({ desk, onDelete, onUpdate }: { desk: Desk; onDelete: (id
     );
 }
 
-function FloorPlanEditor({ tables, setTables, walls, setWalls, desks, setDesks }: {
+function FloorPlanEditor({ tables, setTables, walls, setWalls, desks, setDesks, scanning, floorPlanRef }: {
     tables: Table[]; setTables: React.Dispatch<React.SetStateAction<Table[]>>;
     walls: Wall[]; setWalls: React.Dispatch<React.SetStateAction<Wall[]>>;
     desks: Desk[]; setDesks: React.Dispatch<React.SetStateAction<Desk[]>>;
+    scanning: boolean;
+    floorPlanRef: React.RefObject<HTMLDivElement | null>;
 }) {
+    const [activeTableId, setActiveTableId] = useState<string | null>(null);
+
     const updateTable = (id: string, x: number, y: number) => setTables(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
     const updateWall = (id: string, x: number, y: number) => setWalls(prev => prev.map(w => w.id === id ? { ...w, x, y } : w));
     const updateDesk = (id: string, x: number, y: number) => setDesks(prev => prev.map(d => d.id === id ? { ...d, x, y } : d));
 
     return (
-        <div className="relative bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-2xl overflow-hidden" style={{ height: 600, backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
-            {walls.map(w => <DraggableWall key={w.id} wall={w} onUpdate={updateWall} onDelete={id => setWalls(prev => prev.filter(x => x.id !== id))} />)}
-            {desks.map(d => <DraggableDesk key={d.id} desk={d} onUpdate={updateDesk} onDelete={id => setDesks(prev => prev.filter(x => x.id !== id))} />)}
-            {tables.map(t => <DraggableTable key={t.id} table={t} onUpdate={updateTable} />)}
+        <div ref={floorPlanRef} className="relative bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-2xl overflow-hidden" style={{ height: 600, backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+            {walls.map((w, index) => <DraggableWall key={w.id || `wall-${index}`} wall={w} onUpdate={updateWall} onDelete={id => setWalls(prev => prev.filter(x => x.id !== id))} />)}
+            {desks.map((d, index) => <DraggableDesk key={d.id || `desk-${index}`} desk={d} onUpdate={updateDesk} onDelete={id => setDesks(prev => prev.filter(x => x.id !== id))} />)}
+            {tables.map((t, index) => <DraggableTable key={t.id || `floor-table-${index}`} table={t} onUpdate={updateTable} isActive={activeTableId === t.id} onActivate={setActiveTableId} />)}
+
+            {scanning && (
+                <div className="absolute inset-0 z-40 bg-slate-900/25 backdrop-blur-[1px]">
+                    <div className="absolute inset-0 animate-pulse" style={{ backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(59,130,246,0.25) 50%, transparent 100%)', backgroundSize: '200% 100%', animationDuration: '1.2s' }} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="px-4 py-2.5 rounded-xl bg-white/85 border border-blue-200 shadow-md text-sm font-medium text-blue-700">
+                            Scanning...
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -624,10 +790,18 @@ export default function TablesQRCodesPage() {
     const [showSaveMsg, setShowSaveMsg] = useState(false);
     const [previewTable, setPreviewTable] = useState<Table | null>(null);
     const [showManageModal, setShowManageModal] = useState(false);
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+    const [isAiScanning, setIsAiScanning] = useState(false);
+    const [showCameraModal, setShowCameraModal] = useState(false);
+    const [autoLayoutStep, setAutoLayoutStep] = useState<'idle' | 'scanning' | 'review3d'>('idle');
+    const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
+    const [detectedTables, setDetectedTables] = useState<DetectedTable3D[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isLoaded, setIsLoaded] = useState(false);
     // baseUrl is computed client-side only to avoid SSR/hydration mismatch
     const [baseUrl, setBaseUrl] = useState('');
+    const floorPlanRef = useRef<HTMLDivElement | null>(null);
+    const photoInputRef = useRef<HTMLInputElement | null>(null);
     const { storeId: tenantId, subscriptionTier } = useRestaurant();
     const scopedKey = useCallback((baseKey: string) => {
         if (!tenantId) return baseKey;
@@ -665,6 +839,156 @@ export default function TablesQRCodesPage() {
     }, [tenantId, getActiveToken]);
     // Pro tier can be 'pro', '2k', or '2.5k' (backwards compatibility)
     const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    const isSpatialPro = subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    const userSubscription = useMemo(() => (isPro ? 'pro' : 'starter'), [isPro]);
+    const reviewGridRef = useRef<HTMLDivElement | null>(null);
+
+    const generateLayoutFromImage = useCallback(async (imageFile: Blob): Promise<AiLayoutTable[]> => {
+        // Mock multimodal processing call - replace with real endpoint when model is wired.
+        await new Promise((resolve) => setTimeout(resolve, 1600));
+
+        const count = Math.max(tables.length, 6);
+        const cols = Math.ceil(Math.sqrt(count));
+        const rows = Math.ceil(count / cols);
+        const xPadding = 12;
+        const yPadding = 12;
+        const usableW = 100 - xPadding * 2;
+        const usableH = 100 - yPadding * 2;
+
+        const aiJson = Array.from({ length: count }).map((_, idx) => {
+            const col = idx % cols;
+            const row = Math.floor(idx / cols);
+            const x = xPadding + (col + 0.5) * (usableW / cols);
+            const y = yPadding + (row + 0.5) * (usableH / rows);
+            return {
+                id: `T-${String(idx + 1).padStart(2, '0')}`,
+                type: 'standard' as const,
+                x: Math.max(0, Math.min(100, Number(x.toFixed(2)))),
+                y: Math.max(0, Math.min(100, Number(y.toFixed(2)))),
+            };
+        });
+
+        void imageFile;
+        return aiJson;
+    }, [tables.length]);
+
+    const mapNormalizedToAbsolute = useCallback((x: number, y: number) => {
+        const node = floorPlanRef.current;
+        const width = node?.clientWidth ?? 1000;
+        const height = node?.clientHeight ?? 600;
+        const clampedX = Math.max(0, Math.min(100, x));
+        const clampedY = Math.max(0, Math.min(100, y));
+        return {
+            x: Math.round((clampedX / 100) * width),
+            y: Math.round((clampedY / 100) * height),
+        };
+    }, []);
+
+    const applyAiLayout = useCallback(async (imageFile: Blob, previewUrl?: string) => {
+        if (userSubscription !== 'pro') {
+            setShowUpgradeModal(true);
+            return;
+        }
+
+        if (previewUrl) setCapturedImagePreview(previewUrl);
+        setAutoLayoutStep('scanning');
+        setIsAiScanning(true);
+        try {
+            const aiTables = await generateLayoutFromImage(imageFile);
+
+            const nextDetected = aiTables.map((item, idx) => ({
+                ...item,
+                seats: tables[idx]?.seats || 4,
+            }));
+
+            setDetectedTables(nextDetected);
+            setAutoLayoutStep('review3d');
+        } finally {
+            setIsAiScanning(false);
+            if (photoInputRef.current) photoInputRef.current.value = '';
+        }
+    }, [userSubscription, generateLayoutFromImage, tables]);
+
+    const onScanButtonClick = useCallback(() => {
+        if (userSubscription !== 'pro') {
+            setShowUpgradeModal(true);
+            return;
+        }
+
+        if (!navigator?.mediaDevices?.getUserMedia) {
+            photoInputRef.current?.click();
+            return;
+        }
+
+        setShowCameraModal(true);
+    }, [userSubscription]);
+
+    const onPhotoPicked = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        await applyAiLayout(file);
+    }, [applyAiLayout]);
+
+    const onCameraCapture = useCallback(async ({ blob, previewUrl }: { blob: Blob; previewUrl: string }) => {
+        setShowCameraModal(false);
+        await applyAiLayout(blob, previewUrl);
+    }, [applyAiLayout]);
+
+    const updateDetectedTable = useCallback((id: string, patch: Partial<DetectedTable3D>) => {
+        setDetectedTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    }, []);
+
+    const handleDragDetectedTable = useCallback((id: string, deltaX: number, deltaY: number) => {
+        const grid = reviewGridRef.current;
+        if (!grid) return;
+        const dx = (deltaX / Math.max(grid.clientWidth, 1)) * 100;
+        const dy = (deltaY / Math.max(grid.clientHeight, 1)) * 100;
+
+        setDetectedTables((prev) => prev.map((t) => {
+            if (t.id !== id) return t;
+            return {
+                ...t,
+                x: Math.max(0, Math.min(100, Number((t.x + dx).toFixed(2)))),
+                y: Math.max(0, Math.min(100, Number((t.y + dy).toFixed(2)))),
+            };
+        }));
+    }, []);
+
+    const confirmAndSync3D = useCallback(async () => {
+        if (!tenantId) return;
+
+        const updated = detectedTables.map((item, idx) => {
+            const prev = tables[idx];
+            const abs = mapNormalizedToAbsolute(item.x, item.y);
+            return {
+                id: prev?.id || item.id,
+                name: prev?.name || `Table ${idx + 1}`,
+                seats: item.seats,
+                status: prev?.status || 'available',
+                x: abs.x,
+                y: abs.y,
+            } as Table;
+        });
+
+        setTables(updated);
+        setHasChanges(true);
+
+        await saveLayoutToServer(updated, walls, desks, floorPlans);
+
+        await addDoc(collection(db, 'restaurants', tenantId, 'floor_plans'), {
+            source: 'ai_auto_layout_3d',
+            createdAt: serverTimestamp(),
+            capturedImagePreview,
+            tablesNormalized: detectedTables,
+            tablesAbsolute: updated,
+            walls,
+            desks,
+        }).catch(() => {
+            // Server layout is already saved via API, so this collection write is best-effort.
+        });
+
+        setAutoLayoutStep('idle');
+    }, [tenantId, detectedTables, tables, mapNormalizedToAbsolute, saveLayoutToServer, walls, desks, floorPlans, capturedImagePreview]);
 
     useEffect(() => {
         let active = true;
@@ -950,7 +1274,7 @@ export default function TablesQRCodesPage() {
                         ) : (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                                 {filteredTables.map((table, i) => (
-                                    <motion.div key={table.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}>
+                                    <motion.div key={table.id || `qr-table-${i}`} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}>
                                         <QRCard table={table} onPreview={setPreviewTable} baseUrl={baseUrl} restaurantId={tenantId} />
                                     </motion.div>
                                 ))}
@@ -968,6 +1292,32 @@ export default function TablesQRCodesPage() {
                         <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
                             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                                 <div className="flex flex-wrap items-center gap-3 lg:gap-4">
+                                    <input
+                                        ref={photoInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={onPhotoPicked}
+                                    />
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={onScanButtonClick}
+                                        className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-medium shadow-md transition-all"
+                                    >
+                                        <Camera className="w-4 h-4" />
+                                        Live Camera Scan (Pro)
+                                        <ProBadge />
+                                    </motion.button>
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => photoInputRef.current?.click()}
+                                        className="flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-medium"
+                                    >
+                                        <Upload className="w-4 h-4" />
+                                        Upload Photo
+                                    </motion.button>
                                 </div>
                                 <div className="flex items-center gap-3 flex-wrap">
                                     <AnimatePresence mode="wait">
@@ -983,20 +1333,159 @@ export default function TablesQRCodesPage() {
                                     <div className="relative group">
                                         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="flex items-center gap-2 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-sm font-medium transition-colors border border-amber-200"><FolderOpen className="w-4 h-4" />Load ({floorPlans.length})</motion.button>
                                         <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200/60 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                                            <div className="p-2 space-y-1">{floorPlans.map(plan => <button key={plan.id} onClick={() => loadFloorPlan(plan)} className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-sm text-slate-700 transition-colors">{plan.name}</button>)}</div>
+                                            <div className="p-2 space-y-1">{floorPlans.map((plan, index) => <button key={plan.id || `plan-${index}`} onClick={() => loadFloorPlan(plan)} className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-sm text-slate-700 transition-colors">{plan.name}</button>)}</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl p-4 lg:p-6 border border-slate-200/60 shadow-sm">
-                            <FloorPlanEditor
-                                tables={tables} setTables={updater => { setTables(updater); setHasChanges(true); }}
-                                walls={walls} setWalls={updater => { setWalls(updater); setHasChanges(true); }}
-                                desks={desks} setDesks={updater => { setDesks(updater); setHasChanges(true); }}
-                            />
-                            <p className="mt-4 text-sm text-slate-400">💡 <span className="font-medium">Drag</span> to move • <span className="font-medium">Shift + Click</span> to delete walls/desks</p>
-                        </motion.div>
+
+                        <AnimatePresence mode="wait">
+                            {autoLayoutStep === 'scanning' && capturedImagePreview ? (
+                                <motion.div
+                                    key="ai-scanning"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="bg-white rounded-2xl p-4 lg:p-6 border border-slate-200/60 shadow-sm"
+                                >
+                                    <div className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                                        <ScanLine className="w-4 h-4 text-orange-500" />
+                                        3D Analysis In Progress
+                                    </div>
+                                    <div className="relative rounded-xl overflow-hidden border border-slate-200">
+                                        <img src={capturedImagePreview} alt="Captured restaurant" className="w-full max-h-[480px] object-cover" />
+                                        <motion.div
+                                            initial={{ y: 0 }}
+                                            animate={{ y: ['0%', '100%', '0%'] }}
+                                            transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
+                                            className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-orange-500 to-transparent shadow-[0_0_20px_rgba(249,115,22,0.8)]"
+                                        />
+                                    </div>
+                                </motion.div>
+                            ) : autoLayoutStep === 'review3d' ? (
+                                <motion.div
+                                    key="ai-3d-review"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="bg-white rounded-2xl p-4 lg:p-6 border border-slate-200/60 shadow-sm"
+                                >
+                                    <div className="flex flex-col lg:flex-row gap-4">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <h3 className="text-sm font-semibold text-slate-800">3D Review</h3>
+                                                <span className="text-xs text-slate-500">Drag blocks to nudge placement</span>
+                                            </div>
+
+                                            <div className="relative">
+                                                <div className={cn('relative rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden', !isSpatialPro && 'blur-[2px] pointer-events-none')}>
+                                                    <div
+                                                        ref={reviewGridRef}
+                                                        className="relative h-[520px]"
+                                                        style={{
+                                                            transform: 'perspective(1000px) rotateX(45deg)',
+                                                            transformStyle: 'preserve-3d',
+                                                            backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.2) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.2) 1px, transparent 1px)',
+                                                            backgroundSize: '36px 36px',
+                                                        }}
+                                                    >
+                                                        {detectedTables.map((table, index) => (
+                                                            <motion.div
+                                                                key={table.id || `detected-${index}`}
+                                                                drag
+                                                                dragMomentum={false}
+                                                                onDragEnd={(_, info) => handleDragDetectedTable(table.id, info.offset.x, info.offset.y)}
+                                                                className="absolute w-16 h-16 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 border border-orange-700/40 shadow-md shadow-orange-500/40 cursor-grab"
+                                                                style={{ left: `${table.x}%`, top: `${table.y}%`, transform: 'translate(-50%, -50%) translateZ(18px)' }}
+                                                                whileDrag={{ scale: 1.06 }}
+                                                            >
+                                                                <div className="absolute inset-0 rounded-lg border-t border-white/35" />
+                                                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[10px] px-1.5 py-0.5 rounded bg-slate-900/75 text-white whitespace-nowrap">
+                                                                    {table.id}
+                                                                </div>
+                                                            </motion.div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {!isSpatialPro && (
+                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                        <div className="max-w-sm rounded-xl border border-purple-200 bg-white/95 p-4 shadow-xl text-center">
+                                                            <p className="text-sm font-semibold text-slate-800">Pro Feature: 3D Spatial Mapping</p>
+                                                            <p className="text-xs text-slate-500 mt-1">Upgrade to ₹2,000 tier to unlock full interactive 3D review and sync.</p>
+                                                            <button
+                                                                onClick={() => setShowUpgradeModal(true)}
+                                                                className="mt-3 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-medium"
+                                                            >
+                                                                Upgrade Plan
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="w-full lg:w-80 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <h4 className="text-sm font-semibold text-slate-800 mb-2">Detected Tables</h4>
+                                            <div className="space-y-2 max-h-[430px] overflow-y-auto pr-1">
+                                                {detectedTables.map((table, index) => (
+                                                    <div key={table.id ? `meta-${table.id}` : `meta-${index}`} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-xs font-medium text-slate-700">{table.id}</span>
+                                                            <button
+                                                                onClick={() => setDetectedTables((prev) => prev.filter((x) => x.id !== table.id))}
+                                                                className="w-7 h-7 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center"
+                                                                title="Delete detected table"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                                                            <label className="text-slate-500">Capacity</label>
+                                                            <select
+                                                                value={table.seats}
+                                                                onChange={(e) => updateDetectedTable(table.id, { seats: Number(e.target.value) })}
+                                                                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-slate-700"
+                                                            >
+                                                                {[2, 4, 6, 8, 10, 12].map((n) => <option key={table.id ? `${table.id}-cap-${n}` : `cap-${index}-${n}`} value={n}>{n}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="mt-3 flex gap-2">
+                                                <button
+                                                    onClick={() => setAutoLayoutStep('idle')}
+                                                    className="flex-1 h-9 rounded-lg border border-slate-200 bg-white text-slate-600 text-sm"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={confirmAndSync3D}
+                                                    disabled={!isSpatialPro || detectedTables.length === 0}
+                                                    className="flex-1 h-9 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-md shadow-orange-500/25"
+                                                >
+                                                    Confirm & Sync
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ) : (
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl p-4 lg:p-6 border border-slate-200/60 shadow-sm">
+                                    <FloorPlanEditor
+                                        tables={tables} setTables={updater => { setTables(updater); setHasChanges(true); }}
+                                        walls={walls} setWalls={updater => { setWalls(updater); setHasChanges(true); }}
+                                        desks={desks} setDesks={updater => { setDesks(updater); setHasChanges(true); }}
+                                        scanning={isAiScanning}
+                                        floorPlanRef={floorPlanRef}
+                                    />
+                                    <p className="mt-4 text-sm text-slate-400">💡 <span className="font-medium">Drag</span> to move • <span className="font-medium">Shift + Click</span> to delete walls/desks</p>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </>
                 )}
             </div>
@@ -1013,6 +1502,59 @@ export default function TablesQRCodesPage() {
                         isPro={isPro}
                     />
                 )}
+                {showUpgradeModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setShowUpgradeModal(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 10 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 10 }}
+                            className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl p-6"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-start gap-3">
+                                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md shadow-purple-500/25">
+                                    <Sparkles className="w-5 h-5 text-white" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-lg font-semibold text-slate-900">Upgrade to Pro</h3>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        AI Auto-Layout is a Pro feature. Upgrade to scan your restaurant photo and auto-arrange tables.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                <button
+                                    onClick={() => setShowUpgradeModal(false)}
+                                    className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium"
+                                >
+                                    Maybe Later
+                                </button>
+                                <button
+                                    onClick={() => setShowUpgradeModal(false)}
+                                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-medium shadow-md"
+                                >
+                                    Upgrade to Pro
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+                <CameraModal
+                    open={showCameraModal}
+                    onClose={() => setShowCameraModal(false)}
+                    onCapture={onCameraCapture}
+                    onUseUpload={() => {
+                        setShowCameraModal(false);
+                        photoInputRef.current?.click();
+                    }}
+                />
             </AnimatePresence>
         </div>
     );

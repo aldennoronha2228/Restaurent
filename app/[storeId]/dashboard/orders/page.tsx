@@ -8,7 +8,7 @@ import { getDefaultTables, getTables, menuItems, type Table } from '@/data/share
 import { fetchActiveOrders, updateOrderStatus, deleteOrder, subscribeToOrders } from '@/lib/firebase-api';
 import type { DashboardOrder } from '@/lib/types';
 import { useRestaurant } from '@/hooks/useRestaurant';
-import type { Unsubscribe } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, type Unsubscribe } from 'firebase/firestore';
 import { adminAuth, tenantAuth } from '@/lib/firebase';
 
 const statusConfig = {
@@ -28,6 +28,7 @@ const tableStatusConfig = {
 export default function LiveOrdersPage() {
     const [orders, setOrders] = useState<DashboardOrder[]>([]);
     const [floorTables, setFloorTables] = useState<Table[]>([]);
+    const [liveMenuItems, setLiveMenuItems] = useState(menuItems);
     const [addingToOrder, setAddingToOrder] = useState<string | null>(null);
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -102,11 +103,98 @@ export default function LiveOrdersPage() {
         });
     }, [tenantId, getActiveToken]);
 
+    const loadMenuViaServer = useCallback(async () => {
+        if (!tenantId) return;
+        const token = await getActiveToken();
+        const response = await fetch(`/api/menu/list?restaurantId=${encodeURIComponent(tenantId)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        const nextItems = Array.isArray(payload?.menuItems) ? payload.menuItems : [];
+        setLiveMenuItems(nextItems);
+    }, [tenantId, getActiveToken]);
+
     useEffect(() => {
         loadTablesViaServer().catch(() => {
             setFloorTables(getDefaultTables());
         });
     }, [tenantId, loadTablesViaServer]);
+
+    useEffect(() => {
+        if (!tenantId || !contextDb) return;
+
+        let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+
+        const layoutRef = doc(contextDb, 'restaurants', tenantId, 'settings', 'floor_layout');
+        const unsubscribe = onSnapshot(
+            layoutRef,
+            async (snapshot) => {
+                const data = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : {};
+                const nextTables = Array.isArray(data?.tables) ? (data.tables as Table[]) : [];
+
+                setFloorTables(nextTables);
+                const { setTables } = await import('@/data/sharedData');
+                setTables(nextTables, tenantId);
+            },
+            () => {
+                // If real-time listener is blocked by rules/network, keep UI near-live using polling.
+                if (!fallbackInterval) {
+                    fallbackInterval = setInterval(() => {
+                        loadTablesViaServer().catch(() => {
+                            // keep last known UI state
+                        });
+                    }, 8000);
+                }
+            }
+        );
+
+        return () => {
+            unsubscribe();
+            if (fallbackInterval) clearInterval(fallbackInterval);
+        };
+    }, [tenantId, contextDb, loadTablesViaServer]);
+
+    useEffect(() => {
+        if (!tenantId || !contextDb) return;
+
+        let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+        const menuQuery = query(collection(contextDb, 'restaurants', tenantId, 'menu_items'), orderBy('name'));
+        const unsubscribe = onSnapshot(
+            menuQuery,
+            (snapshot) => {
+                const nextItems = snapshot.docs.map((docSnap) => {
+                    const row = docSnap.data() as Record<string, unknown>;
+                    return {
+                        id: docSnap.id,
+                        name: String(row?.name || 'Item'),
+                        price: Number(row?.price || 0),
+                    };
+                });
+
+                setLiveMenuItems(nextItems as typeof menuItems);
+            },
+            () => {
+                if (!fallbackInterval) {
+                    loadMenuViaServer().catch(() => {
+                        // keep last known UI state
+                    });
+                    fallbackInterval = setInterval(() => {
+                        loadMenuViaServer().catch(() => {
+                            // keep last known UI state
+                        });
+                    }, 8000);
+                }
+            }
+        );
+
+        return () => {
+            unsubscribe();
+            if (fallbackInterval) clearInterval(fallbackInterval);
+        };
+    }, [tenantId, contextDb, loadMenuViaServer]);
 
     const runServerOrderAction = useCallback(async (payload: Record<string, unknown>) => {
         if (!tenantId) throw new Error('Missing tenant context');
@@ -304,7 +392,7 @@ export default function LiveOrdersPage() {
         setActionLoading(null);
     };
 
-    const addItemToOrder = (orderId: string, menuItem: typeof menuItems[0]) => {
+    const addItemToOrder = (orderId: string, menuItem: { id: string; name: string; price: number }) => {
         setOrders(prev => prev.map(order => {
             if (order.id !== orderId) return order;
             const existing = order.items.findIndex(i => i.name === menuItem.name);
@@ -328,7 +416,7 @@ export default function LiveOrdersPage() {
         }));
     };
 
-    const filteredMenuItems = menuItems.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    const filteredMenuItems = liveMenuItems.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
     const activeOrders = orders.filter(o => ['new', 'preparing'].includes(o.status));
     const readyToServeOrders = orders.filter(o => o.status === 'done');
     const busyTables = floorTables.filter(t => t.status === 'busy').length;

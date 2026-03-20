@@ -6,11 +6,11 @@ import { Bot, Sparkles, Send, Trash2, X } from 'lucide-react';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
 import { useRestaurant } from '@/hooks/useRestaurant';
 
-const SESSION_KEY = 'nexresto_gemini_support_chat_v1';
+const SESSION_KEY = 'nexresto_nexo_support_chat_v1';
 
 const STARTER_MESSAGE = {
     role: 'assistant',
-    content: 'I can help with operations, growth, and technical issues across your dashboard.\n- Ask about menu, orders, QR, or staff and I will keep it concise.',
+    content: 'Hi, I am Nexo. I can help with operations, growth, and technical issues across your dashboard.\n- I can also execute actions. Example: "add table 4 seats", "arrange tables in a square", or "add menu item name=Margherita Pizza, price=299, category=Pizza, type=veg".',
 };
 
 function toUsageState(payload) {
@@ -27,12 +27,6 @@ function toUsageState(payload) {
         isLimitReached: Boolean(payload?.isLimitReached) || used >= limit,
         resetsAt: typeof payload?.resetsAt === 'string' ? payload.resetsAt : null,
     };
-}
-
-function buildAsciiMeter(used, limit) {
-    const slots = 10;
-    const fill = limit > 0 ? Math.min(slots, Math.round((used / limit) * slots)) : 0;
-    return `[ ${'|'.repeat(fill)}${' '.repeat(slots - fill)} ]`;
 }
 
 function renderInlineMarkdown(text) {
@@ -224,7 +218,7 @@ export default function GeminiSupportChat() {
                 }
 
                 if (response.status === 429 || payload?.code === 'quota_exceeded') {
-                    throw new Error('AI quota reached. Please enable/increase Gemini billing quota, or wait for reset and try again.');
+                    throw new Error('AI quota reached. Please check your provider billing/quota and retry after reset.');
                 }
 
                 const detail = typeof payload?.details === 'string' ? payload.details : '';
@@ -276,8 +270,8 @@ export default function GeminiSupportChat() {
                                         <Bot className="w-4 h-4" />
                                     </div>
                                     <div>
-                                        <p className="text-sm font-semibold leading-tight">Hotel AI Concierge</p>
-                                        <p className="text-[10px] text-slate-300">Hospitality Expert</p>
+                                        <p className="text-sm font-semibold leading-tight">Nexo</p>
+                                        <p className="text-[10px] text-slate-300">Hospitality AI Assistant</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
@@ -334,7 +328,7 @@ export default function GeminiSupportChat() {
                                         className="flex justify-start"
                                     >
                                         <div className="rounded-2xl px-3 py-2 bg-white/10 border border-white/15 text-slate-200 text-sm flex items-center gap-1.5">
-                                            <span className="text-xs text-slate-300">Concierge is typing</span>
+                                            <span className="text-xs text-slate-300">Nexo is typing</span>
                                             <span className="inline-flex gap-1">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" />
                                                 <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce [animation-delay:120ms]" />
@@ -349,7 +343,7 @@ export default function GeminiSupportChat() {
                             <form onSubmit={sendMessage} className="h-[120px] px-3 py-2 border-t border-white/10 bg-slate-900/40 backdrop-blur-xl flex flex-col gap-2">
                                 <div>
                                     <p className="text-[11px] text-slate-300">
-                                        <span className="font-mono text-slate-200">{buildAsciiMeter(usage.used, usage.limit)}</span> {usage.used} / {usage.limit} prompts used
+                                        {usage.used} / {usage.limit} prompts used
                                     </p>
                                     <div className="mt-1 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
                                         <div
@@ -371,7 +365,7 @@ export default function GeminiSupportChat() {
                                     <input
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
-                                        placeholder="Ask about menu trends, metrics, QR issues..."
+                                        placeholder="Ask or command: add table 4 seats | arrange tables in a square | add menu item..."
                                         className="flex-1 h-10 rounded-xl border border-white/15 bg-slate-950/40 px-3 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-slate-500"
                                     />
                                     <button
@@ -394,8 +388,8 @@ export default function GeminiSupportChat() {
                 whileTap={{ scale: 0.94 }}
                 onClick={() => setIsOpen((v) => !v)}
                 className="fixed bottom-20 right-4 md:bottom-8 md:right-8 z-[61] w-14 h-14 rounded-2xl bg-gradient-to-r from-[#0b1226] to-[#101a36] border border-white/10 text-white shadow-2xl shadow-black/40 flex items-center justify-center"
-                aria-label="Toggle AI Concierge"
-                title="Hotel AI Concierge"
+                aria-label="Toggle Nexo"
+                title="Nexo"
             >
                 {isOpen ? <X className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
             </motion.button>

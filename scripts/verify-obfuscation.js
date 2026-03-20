@@ -8,6 +8,8 @@ const FORBIDDEN_PATTERNS = [
   'FIREBASE_PRIVATE_KEY',
   'SUPER_ADMIN_PASSWORD',
   'GEMINI_API_KEY',
+  'OPENAI_API_KEY',
+  'AI_CONTROL_KEY',
   'restaurants/',
   'pending_signups/',
   '/api/tenant/create',

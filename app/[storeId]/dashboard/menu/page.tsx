@@ -62,11 +62,23 @@ function ExcelUploadModal({ open, onClose, tenantId, onImportComplete }: { open:
         setUploading(true);
         setResult(null);
         try {
+            const activeUser = adminAuth.currentUser || tenantAuth.currentUser;
+            if (!activeUser) {
+                throw new Error('Missing active session');
+            }
+            const idToken = await activeUser.getIdToken(true);
+
             const formData = new FormData();
             formData.append('file', file);
             formData.append('tenantId', tenantId);
 
-            const res = await fetch('/api/menu/import', { method: 'POST', body: formData });
+            const res = await fetch('/api/menu/import', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${idToken}`,
+                },
+                body: formData,
+            });
             const data = await res.json();
 
             if (!res.ok) throw new Error(data.error || 'Import failed');
