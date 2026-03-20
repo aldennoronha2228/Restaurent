@@ -1,16 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="NexResto mark">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="NexResto mark">
   <defs>
-    <linearGradient id="nrLogoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a855f7"/>
-      <stop offset="100%" stop-color="#6d28d9"/>
-    </linearGradient>
+    <filter id="nrMarkGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
   </defs>
 
-  <g fill="none" stroke="url(#nrLogoGradient)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M76 430V92h58l120 150V92h58v338h-58L134 278v152z"/>
-    <path d="M262 352V188"/>
-    <path d="M288 352V188"/>
-    <path d="M236 230h80"/>
-    <path d="M318 188c68-82 154-58 154 12 0 40-24 64-54 78 26 10 44 30 44 58 0 50-42 88-122 80"/>
+  <g fill="none" stroke="#ff5a00" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#nrMarkGlow)">
+    <path d="M128 26L52 70L128 114L204 70L128 26" />
+    <path d="M128 114V204" />
+    <path d="M52 70V160" />
+    <path d="M204 70V160" />
+    <path d="M128 204L60 164" />
+    <path d="M128 204L196 164" />
   </g>
 </svg>

@@ -10,6 +10,7 @@ import {
     AlertTriangle, Shield, LogIn, ArrowLeft
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { GlowingEffect } from '@/components/ui/glowing-effect';
 import { useAuth } from '@/context/AuthContext';
 import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
@@ -41,6 +42,99 @@ function buildNavHref(urlSlug: string, basePath: string): string {
     return `/${urlSlug}${basePath}`;
 }
 
+function demoResponse(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
+
+function buildDemoTables() {
+    return [
+        { id: 'T-01', name: 'Table 1', seats: 4, status: 'available', x: 180, y: 130 },
+        { id: 'T-02', name: 'Table 2', seats: 2, status: 'busy', x: 360, y: 130 },
+        { id: 'T-03', name: 'Table 3', seats: 6, status: 'available', x: 560, y: 140 },
+        { id: 'T-04', name: 'Table 4', seats: 4, status: 'reserved', x: 220, y: 320 },
+        { id: 'T-05', name: 'Table 5', seats: 8, status: 'busy', x: 460, y: 320 },
+    ];
+}
+
+function buildDemoMenu() {
+    const categories = [
+        { id: 'cat-app', name: 'Appetizers' },
+        { id: 'cat-main', name: 'Main Course' },
+        { id: 'cat-bev', name: 'Beverages' },
+    ];
+    const menuItems = [
+        { id: 'itm-1', name: 'Truffle Fries', price: 249, category_id: 'cat-app', categories: { name: 'Appetizers' }, type: 'veg', available: true },
+        { id: 'itm-2', name: 'Smoked Paneer Bowl', price: 379, category_id: 'cat-main', categories: { name: 'Main Course' }, type: 'veg', available: true },
+        { id: 'itm-3', name: 'Citrus Chicken', price: 439, category_id: 'cat-main', categories: { name: 'Main Course' }, type: 'non-veg', available: true },
+        { id: 'itm-4', name: 'Cold Brew Tonic', price: 179, category_id: 'cat-bev', categories: { name: 'Beverages' }, type: 'veg', available: true },
+    ];
+    return { categories, menuItems };
+}
+
+function buildDemoOrders() {
+    const now = Date.now();
+    return [
+        {
+            id: 'ord-demo-1',
+            table: 'T-02',
+            status: 'new',
+            total: 628,
+            created_at: new Date(now - 6 * 60000).toISOString(),
+            items: [{ name: 'Truffle Fries', qty: 1, price: 249 }, { name: 'Cold Brew Tonic', qty: 1, price: 179 }, { name: 'Citrus Chicken', qty: 1, price: 200 }],
+            daily_order_number: 41,
+        },
+        {
+            id: 'ord-demo-2',
+            table: 'T-05',
+            status: 'preparing',
+            total: 958,
+            created_at: new Date(now - 18 * 60000).toISOString(),
+            items: [{ name: 'Smoked Paneer Bowl', qty: 2, price: 379 }, { name: 'Cold Brew Tonic', qty: 1, price: 200 }],
+            daily_order_number: 40,
+        },
+        {
+            id: 'ord-demo-3',
+            table: 'T-01',
+            status: 'paid',
+            total: 1210,
+            created_at: new Date(now - 86 * 60000).toISOString(),
+            items: [{ name: 'Citrus Chicken', qty: 2, price: 439 }, { name: 'Truffle Fries', qty: 1, price: 332 }],
+            daily_order_number: 39,
+        },
+    ];
+}
+
+function buildDemoReports() {
+    const today = new Date();
+    return Array.from({ length: 7 }).map((_, i) => {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i - 1);
+        return {
+            id: `demo-report-${i + 1}`,
+            report_date: d.toISOString().slice(0, 10),
+            total_orders: 32 + i * 3,
+            total_revenue: 18500 + i * 2100,
+            busiest_hour: 20,
+        };
+    });
+}
+
+function GlowLogic() {
+    return (
+        <GlowingEffect
+            spread={40}
+            glow={true}
+            disabled={false}
+            proximity={72}
+            inactiveZone={0.08}
+            borderWidth={2}
+        />
+    );
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const [collapsed, setCollapsed] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -69,6 +163,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [showConflict, setShowConflict] = useState(false);
     const [displayTenantName, setDisplayTenantName] = useState<string>('NexResto');
     const [isRestaurantTemporarilyDisabled, setIsRestaurantTemporarilyDisabled] = useState(false);
+    const [isDemoMode, setIsDemoMode] = useState(false);
 
     // Get Super Admin state (God Mode check)
     const {
@@ -209,6 +304,118 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         pathname.startsWith(`${item.href}/`) ||
         (pathname === `/${urlStoreId}/dashboard` && item.href === `/${urlStoreId}/dashboard/orders`)
     );
+    const isGrandHotel = /grand/i.test(displayTenantName) || /grand/i.test(urlStoreId);
+
+    useEffect(() => {
+        if (!urlStoreId) return;
+        const storageKey = `nexresto:demo-mode:${urlStoreId}`;
+        const saved = localStorage.getItem(storageKey);
+        setIsDemoMode(saved === '1');
+    }, [urlStoreId]);
+
+    useEffect(() => {
+        if (!urlStoreId) return;
+        const storageKey = `nexresto:demo-mode:${urlStoreId}`;
+        if (!isGrandHotel) {
+            setIsDemoMode(false);
+            localStorage.removeItem(storageKey);
+            return;
+        }
+        localStorage.setItem(storageKey, isDemoMode ? '1' : '0');
+    }, [isDemoMode, isGrandHotel, urlStoreId]);
+
+    useEffect(() => {
+        if (!isGrandHotel || !isDemoMode) return;
+
+        const originalFetch = window.fetch.bind(window);
+        const demoTables = buildDemoTables();
+        const demoMenu = buildDemoMenu();
+        const demoOrders = buildDemoOrders();
+        const demoReports = buildDemoReports();
+
+        window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            const raw = typeof input === 'string'
+                ? input
+                : input instanceof URL
+                    ? input.toString()
+                    : input.url;
+
+            const method = (init?.method || (typeof input !== 'string' && !(input instanceof URL) ? input.method : 'GET') || 'GET').toUpperCase();
+            const url = raw.startsWith('http') ? new URL(raw).pathname + new URL(raw).search : raw;
+
+            if (url.includes('/api/tables/layout')) {
+                if (method === 'GET') {
+                    return demoResponse({
+                        found: true,
+                        layout: {
+                            tables: demoTables,
+                            walls: [],
+                            desks: [],
+                            floorPlans: [{ id: 'demo-layout', name: 'Grand Demo Layout', tables: demoTables, walls: [], desks: [] }],
+                        },
+                    });
+                }
+                return demoResponse({ ok: true, simulated: true });
+            }
+
+            if (url.includes('/api/orders/live')) {
+                return demoResponse({ orders: demoOrders.filter((o) => ['new', 'preparing', 'done', 'paid'].includes(o.status)) });
+            }
+
+            if (url.includes('/api/orders/history')) {
+                return demoResponse({ orders: demoOrders });
+            }
+
+            if (url.includes('/api/orders/manage')) {
+                return demoResponse({ ok: true, simulated: true });
+            }
+
+            if (url.includes('/api/menu/list')) {
+                return demoResponse({ menuItems: demoMenu.menuItems, categories: demoMenu.categories });
+            }
+
+            if (url.includes('/api/menu/categories')) {
+                return demoResponse({ ok: true, categories: demoMenu.categories, simulated: true });
+            }
+
+            if (url.includes('/api/reports?')) {
+                return demoResponse({ reports: demoReports });
+            }
+
+            if (url.includes('/api/reports') && method === 'POST') {
+                return demoResponse({ report: demoReports[0] });
+            }
+
+            if (url.includes('/api/reports/settings')) {
+                return demoResponse({ ok: true, simulated: true });
+            }
+
+            if (url.includes('/api/branding/settings')) {
+                return demoResponse({
+                    settings: {
+                        primaryColor: '#0f172a',
+                        accentColor: '#38bdf8',
+                        logoUrl: '',
+                    },
+                    simulated: true,
+                });
+            }
+
+            if (url.includes('/api/branding/upload')) {
+                return demoResponse({ url: '', simulated: true });
+            }
+
+            if (url.includes('/api/') && method !== 'GET') {
+                return demoResponse({ ok: true, simulated: true });
+            }
+
+            return originalFetch(input, init);
+        };
+
+        return () => {
+            window.fetch = originalFetch;
+        };
+    }, [isDemoMode, isGrandHotel]);
     const isProRouteBlocked = Boolean(activeNavItem?.proOnly) && !isPro;
 
     const mobilePrimaryNavigation = filteredNavigation.filter((item) =>
@@ -592,6 +799,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             </button>
                                     </div>
                                         <nav className="flex-1 px-3 py-4 space-y-1 premium-sidebar">
+                                        {isGrandHotel && (
+                                            <div className="mb-3 px-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const next = !isDemoMode;
+                                                        setIsDemoMode(next);
+                                                        toast.success(next ? 'Demo mode enabled for The Grand' : 'Demo mode disabled');
+                                                    }}
+                                                    className={cn(
+                                                        'w-full flex items-center justify-between px-3 py-2.5 rounded-2xl border text-sm font-medium transition-colors',
+                                                        isDemoMode
+                                                            ? 'bg-emerald-500/15 border-emerald-300/40 text-emerald-100'
+                                                            : 'bg-white/5 border-white/15 text-slate-200'
+                                                    )}
+                                                >
+                                                    <span>Demo Mode</span>
+                                                    <span className={cn('w-7 h-4 rounded-full relative', isDemoMode ? 'bg-emerald-500' : 'bg-slate-500')}>
+                                                        <span className={cn('absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all', isDemoMode ? 'left-3.5' : 'left-0.5')} />
+                                                    </span>
+                                                </button>
+                                            </div>
+                                        )}
                                         {filteredNavigation.map((item) => {
                                             const isActive = pathname === item.href;
                                             const isLocked = item.proOnly && !isPro;
@@ -641,13 +871,46 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <motion.div initial={false} animate={{ paddingLeft: collapsed ? 80 : 240 }} className="hidden lg:block" />
 
                     {/* Top Navbar */}
-                    <header className="h-16 sticky top-0 z-20 bg-white/45 backdrop-blur-xl border-b border-white/30">
+                    <header className="nexo-glow-border h-16 sticky top-0 z-20 bg-white/45 backdrop-blur-xl border-b border-white/30">
+                        <GlowLogic />
                         <div className="h-full px-4 lg:px-6 flex items-center justify-between gap-4">
                             <div className="md:hidden text-sm font-semibold text-slate-800">Dashboard</div>
                             <div className="hidden md:block flex-1 max-w-md">
                                 <GlobalSearch />
                             </div>
                             <div className="flex items-center gap-2 lg:gap-3">
+                                {isGrandHotel && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const next = !isDemoMode;
+                                            setIsDemoMode(next);
+                                            toast.success(next ? 'Demo mode enabled for The Grand' : 'Demo mode disabled');
+                                        }}
+                                        className={cn(
+                                            'hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors',
+                                            isDemoMode
+                                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                        )}
+                                        title="Toggle demo simulation mode"
+                                    >
+                                        <span
+                                            className={cn(
+                                                'w-7 h-4 rounded-full relative transition-colors',
+                                                isDemoMode ? 'bg-emerald-500' : 'bg-slate-300'
+                                            )}
+                                        >
+                                            <span
+                                                className={cn(
+                                                    'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all',
+                                                    isDemoMode ? 'left-3.5' : 'left-0.5'
+                                                )}
+                                            />
+                                        </span>
+                                        Demo Mode
+                                    </button>
+                                )}
                                 <NotificationBell />
                                 <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors" title="Open settings">
                                     <Menu className="w-5 h-5 text-slate-600" />
@@ -673,8 +936,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                         {showUserMenu && (
                                             <motion.div
                                                 initial={{ opacity: 0, scale: 0.95, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: -8 }}
-                                                className="absolute right-0 top-12 w-56 bg-white rounded-2xl shadow-xl border border-slate-200/60 z-50 overflow-hidden"
+                                                className="nexo-glow-border absolute right-0 top-12 w-56 bg-white rounded-2xl shadow-xl border border-slate-200/60 z-50 overflow-hidden"
                                             >
+                                                <GlowLogic />
                                                 <div className="px-4 py-3 border-b border-slate-100">
                                                     <p className="text-xs font-semibold text-slate-900 truncate">{user?.displayName ?? 'Admin'}</p>
                                                     <p className="text-xs text-slate-500 truncate mt-0.5">{user?.email}</p>
@@ -694,7 +958,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                     {showEndingSoonReminder && (
                         <div className="px-4 lg:px-6 pt-4">
-                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                            <div className="nexo-glow-border rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                                <GlowLogic />
                                 <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                                 <div>
                                     <p className="text-sm font-semibold text-amber-900">
@@ -712,8 +977,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                     {/* Page Content */}
                     <div className="p-6 lg:p-8 pb-24 lg:pb-8" key={pathname}>
+                        {isGrandHotel && isDemoMode && (
+                            <div className="nexo-glow-border mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                                <GlowLogic />
+                                Demo Mode is ON for The Grand. Dashboard data and actions are simulated.
+                            </div>
+                        )}
                         {isProRouteBlocked ? (
-                            <div className="max-w-2xl mx-auto rounded-3xl border border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 p-8 text-center">
+                            <div className="nexo-glow-border max-w-2xl mx-auto rounded-3xl border border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 p-8 text-center">
+                                <GlowLogic />
                                 <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center mb-4">
                                     <Lock className="w-7 h-7 text-white" />
                                 </div>
@@ -755,7 +1027,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
 
                 {/* Mobile Bottom Navigation - Shows top allowed features */}
-                <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/70 backdrop-blur-xl border-t border-slate-200/60 z-30">
+                <nav className="nexo-glow-border md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/70 backdrop-blur-xl border-t border-slate-200/60 z-30">
+                    <GlowLogic />
                     <div className="h-full px-2 flex items-center justify-around">
                         {mobilePrimaryNavigation.map((item) => {
                             const isActive = pathname === item.href;

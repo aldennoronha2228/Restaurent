@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { SuperAdminAuthProvider } from '@/context/SuperAdminAuthContext';
 import { Toaster } from 'sonner';
+import GlobalGlowTracker from '@/components/ui/GlobalGlowTracker';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -11,9 +12,9 @@ export const metadata: Metadata = {
   title: 'NexResto — Dashboard',
   description: 'NexResto restaurant management dashboard',
   icons: {
-    icon: '/nexresto-logo.png',
-    shortcut: '/nexresto-logo.png',
-    apple: '/nexresto-logo.png',
+    icon: '/nexresto-mark.svg',
+    shortcut: '/nexresto-mark.svg',
+    apple: '/nexresto-mark.svg',
   },
 };
 
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
+        <GlobalGlowTracker />
         {/*
           Two independent auth providers — each watches a different Firebase auth instance:
             AuthProvider           → firebase          → tenant admin session

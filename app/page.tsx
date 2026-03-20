@@ -1,2 +1,5 @@
-import { redirect } from 'next/navigation';
-export default function RootPage() { redirect('/login'); }
+import LandingPage from './LandingPage';
+
+export default function RootPage() {
+	return <LandingPage />;
+}

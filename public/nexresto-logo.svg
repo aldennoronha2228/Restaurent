@@ -1,20 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="NexResto logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" role="img" aria-label="NexResto logo">
   <defs>
-    <linearGradient id="nrLogoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a855f7"/>
-      <stop offset="100%" stop-color="#6d28d9"/>
-    </linearGradient>
+    <filter id="nrOrangeGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
   </defs>
 
-  <g transform="translate(20 20)">
-    <g fill="none" stroke="url(#nrLogoGradient)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M36 300V36h50l112 138V36h50v264h-50L86 182v118z"/>
-      <path d="M206 238V118"/>
-      <path d="M228 238V118"/>
-      <path d="M182 154h70"/>
-      <path d="M252 118c56-66 128-46 128 10 0 33-20 53-44 64 20 10 36 25 36 48 0 40-34 72-96 66"/>
-    </g>
+  <g transform="translate(120 56)" fill="none" stroke="#ff5a00" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" filter="url(#nrOrangeGlow)">
+    <path d="M120 24L40 70L120 116L200 70L120 24" />
+    <path d="M120 116V208" />
+    <path d="M40 70V162" />
+    <path d="M200 70V162" />
+    <path d="M120 208L48 166" />
+    <path d="M120 208L192 166" />
   </g>
 
-  <text x="450" y="196" font-family="'Poppins', 'Segoe UI', Arial, sans-serif" font-size="122" font-weight="700" fill="#111827">NexResto</text>
+  <text
+    x="120"
+    y="340"
+    font-family="'Plus Jakarta Sans', 'Inter', 'Segoe UI', Arial, sans-serif"
+    font-size="108"
+    font-weight="500"
+    letter-spacing="20"
+    fill="#f8fafc"
+  >
+    NEXRESTO
+  </text>
 </svg>
