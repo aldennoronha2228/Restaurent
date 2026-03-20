@@ -7,10 +7,10 @@
 
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-    X, Sparkles, BarChart3, Package, Palette, 
-    QrCode, Users, CheckCircle2, Crown, Zap, ArrowRight
+    X, Check, Crown, User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
 interface UpgradeModalProps {
     isOpen: boolean;
@@ -18,19 +18,55 @@ interface UpgradeModalProps {
     featureName?: string;
 }
 
-const proFeatures = [
-    { icon: BarChart3, title: 'Analytics Dashboard', description: 'Track revenue, orders, and customer insights' },
-    { icon: Package, title: 'Inventory Management', description: 'Real-time stock tracking with low-stock alerts' },
-    { icon: Palette, title: 'Custom Branding', description: 'Custom colors, logo, and menu styling' },
-    { icon: QrCode, title: 'Visual Floor Plan', description: 'Drag-and-drop table layout editor' },
-    { icon: Users, title: 'Staff Management', description: 'Role-based access for your team' },
-];
+type PlanKey = 'basic' | 'pro';
+
+const PLANS: Record<PlanKey, {
+    name: string;
+    price: number;
+    cadenceLabel: string;
+    summary?: string;
+    accent: string;
+    features: string[];
+}> = {
+    basic: {
+        name: 'Starter',
+        price: 2000,
+        cadenceLabel: '/ Month',
+        accent: 'border-slate-600/40 bg-slate-800/55',
+        features: [
+            'Phone Ordering',
+            'Live Order Queue',
+            'QR Code Generation',
+            'Menu Management',
+            'Single Owner Only',
+        ],
+    },
+    pro: {
+        name: 'Pro',
+        price: 2000,
+        cadenceLabel: '/ Month',
+        summary: 'POPULAR',
+        accent: 'border-fuchsia-500/40 bg-fuchsia-500/15',
+        features: [
+            'Everything in Starter',
+            'Multi-user Roles (Owner, Manager, Staff)',
+            'Role-based Access Control',
+            'Analytics Dashboard',
+            'Inventory Management',
+            'Custom Branding',
+        ],
+    },
+};
 
 export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps) {
+    const [selectedPlan, setSelectedPlan] = useState<PlanKey>('basic');
+    const selectedPrice = PLANS[selectedPlan].price;
+
     const handleRequestUpgrade = () => {
         // In production, this would send an email notification to super admin
         // or redirect to a payment page
-        alert('Upgrade request sent! Our team will contact you shortly.');
+        const plan = PLANS[selectedPlan].name;
+        alert(`${plan} upgrade request sent! Our team will contact you shortly.`);
         onClose();
     };
 
@@ -41,7 +77,7 @@ export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-2 sm:p-4"
                     onClick={onClose}
                 >
                     <motion.div
@@ -49,62 +85,66 @@ export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps
                         animate={{ scale: 1, y: 0 }}
                         exit={{ scale: 0.9, y: 20 }}
                         onClick={(e) => e.stopPropagation()}
-                        className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl border border-slate-700/50 w-full max-w-lg overflow-hidden"
+                        className="relative bg-slate-900 rounded-3xl border border-slate-700 w-[92vw] sm:w-full max-w-xl overflow-hidden origin-top sm:origin-center"
                     >
-                        {/* Decorative gradient */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-pink-500/5 to-transparent pointer-events-none" />
-                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-500/20 blur-3xl rounded-full -translate-y-1/2 pointer-events-none" />
-                        
                         {/* Close button */}
                         <button
                             onClick={onClose}
-                            className="absolute top-4 right-4 p-2 rounded-full bg-slate-800/50 hover:bg-slate-700/50 transition-colors z-10"
+                            className="absolute top-3 right-3 p-1.5 rounded-full bg-white/10 hover:bg-white/15 transition-colors z-10"
                         >
-                            <X className="w-5 h-5 text-slate-400" />
+                            <X className="w-4 h-4 text-slate-200" />
                         </button>
 
-                        <div className="relative p-6 sm:p-8">
+                        <div className="relative p-3 sm:p-5">
                             {/* Header */}
-                            <div className="text-center mb-6">
-                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 mb-4 shadow-lg shadow-purple-500/30">
-                                    <Crown className="w-8 h-8 text-white" />
+                            <div className="text-center mb-2.5 pt-1">
+                                <div className="hidden sm:inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-800 mb-3 shadow-lg shadow-blue-900/40 border border-slate-700">
+                                    <Crown className="w-6 h-6 text-white" />
                                 </div>
-                                <h2 className="text-2xl font-bold text-white mb-2">
-                                    Unlock {featureName || 'Pro Features'}
+                                <h2 className="font-black text-white leading-tight mb-1 text-[1.6rem] sm:text-[2rem]">
+                                    <span className="sm:hidden">Choose Your Plan</span>
+                                    <span className="hidden sm:inline">Choose Your Plan to Maximize<br />Your Agent&apos;s Potential</span>
                                 </h2>
-                                <p className="text-slate-400 text-sm">
-                                    Upgrade to Pro and supercharge your restaurant operations
+                                <p className="hidden sm:block text-slate-300 text-sm">
+                                    {featureName ? `Unlock ${featureName} and more with a higher plan.` : 'Select the plan that fits your restaurant operations.'}
                                 </p>
                             </div>
 
-                            {/* Pricing */}
-                            <div className="relative bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl p-4 mb-6 border border-purple-500/30">
-                                <div className="flex items-baseline justify-center gap-1">
-                                    <span className="text-slate-400 text-lg">₹</span>
-                                    <span className="text-4xl font-bold text-white">2,000</span>
-                                    <span className="text-slate-400">/month</span>
-                                </div>
-                                <div className="flex items-center justify-center gap-2 mt-2">
-                                    <Zap className="w-4 h-4 text-yellow-400" />
-                                    <span className="text-sm text-slate-300">Save ₹12,000/year with annual billing</span>
-                                </div>
-                            </div>
-
-                            {/* Features */}
-                            <div className="space-y-3 mb-6">
-                                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Everything in Pro:</p>
-                                {proFeatures.map((feature) => (
-                                    <div key={feature.title} className="flex items-start gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
-                                            <feature.icon className="w-4 h-4 text-purple-400" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-medium text-white">{feature.title}</p>
-                                            <p className="text-xs text-slate-400">{feature.description}</p>
-                                        </div>
-                                        <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                                    </div>
-                                ))}
+                            {/* Tier comparison */}
+                            <div className="space-y-2 mb-2.5">
+                                {(['basic', 'pro'] as PlanKey[]).map((key) => {
+                                    const plan = PLANS[key];
+                                    const isSelected = selectedPlan === key;
+                                    return (
+                                        <button
+                                            key={key}
+                                            onClick={() => setSelectedPlan(key)}
+                                            className={cn(
+                                                'w-full rounded-3xl border p-2.5 sm:p-3.5 text-left transition-all relative',
+                                                plan.accent,
+                                                isSelected ? 'ring-2 ring-white/30' : 'hover:border-white/40'
+                                            )}
+                                        >
+                                            {plan.summary && (
+                                                <span className="absolute top-2.5 right-2.5 text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-500 text-white font-semibold">{plan.summary}</span>
+                                            )}
+                                            <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                                                <h3 className={cn('text-2xl sm:text-3xl font-bold', key === 'pro' ? 'text-fuchsia-300' : 'text-slate-100')}>{plan.name}</h3>
+                                                <p className={cn('text-2xl sm:text-3xl font-black', key === 'pro' ? 'text-fuchsia-300' : 'text-slate-100')}>
+                                                    ₹{plan.price.toLocaleString('en-IN')}<span className="text-sm sm:text-base font-semibold opacity-80">/mo</span>
+                                                </p>
+                                            </div>
+                                            <div className="grid gap-0.5 sm:gap-1">
+                                                {plan.features.map((feature) => (
+                                                    <div key={feature} className="flex items-center gap-2 text-slate-200 text-[12.5px] sm:text-sm">
+                                                        {feature === 'Single Owner Only' ? <User className="w-3.5 h-3.5 text-slate-300" /> : <Check className={cn('w-3.5 h-3.5', key === 'pro' ? 'text-fuchsia-300' : 'text-slate-200')} />}
+                                                        <span className={key === 'pro' ? 'text-fuchsia-200' : 'text-slate-200'}>{feature}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
 
                             {/* CTA Buttons */}
@@ -113,23 +153,21 @@ export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps
                                     whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={handleRequestUpgrade}
-                                    className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/30 transition-all"
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 sm:py-3 bg-gradient-to-r from-slate-950 to-blue-950 hover:from-slate-900 hover:to-blue-900 text-white text-sm sm:text-base font-semibold rounded-2xl shadow-lg transition-all"
                                 >
-                                    <Sparkles className="w-5 h-5" />
-                                    Request Upgrade
-                                    <ArrowRight className="w-5 h-5" />
+                                    Subscribe for ₹{selectedPrice.toLocaleString('en-IN')}
                                 </motion.button>
                                 <button
                                     onClick={onClose}
-                                    className="w-full px-6 py-3 text-slate-400 hover:text-white text-sm font-medium transition-colors"
+                                    className="w-full px-6 py-1 text-slate-500 hover:text-slate-700 text-sm font-medium transition-colors"
                                 >
                                     Maybe Later
                                 </button>
                             </div>
 
                             {/* Trust badge */}
-                            <p className="text-center text-xs text-slate-500 mt-4">
-                                30-day money-back guarantee • Cancel anytime
+                            <p className="hidden sm:block text-center text-[11px] text-slate-400 mt-1.5">
+                                Monthly subscription renews automatically.
                             </p>
                         </div>
                     </motion.div>

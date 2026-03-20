@@ -145,6 +145,29 @@ function CustomerMenuContent() {
     }, [restaurantId]);
 
     useEffect(() => {
+        let active = true;
+
+        const enforceAccess = async () => {
+            if (!restaurantId) return;
+            try {
+                const res = await fetch(`/api/tenant/access?restaurantId=${encodeURIComponent(restaurantId)}`, {
+                    cache: 'no-store',
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (active && data?.accountTemporarilyDisabled) {
+                    router.replace('/maintenance');
+                }
+            } catch {
+                // Keep customer page available if access check fails unexpectedly.
+            }
+        };
+
+        enforceAccess();
+        return () => { active = false; };
+    }, [restaurantId, router]);
+
+    useEffect(() => {
         if (!isPreviewMode) return;
 
         const handler = (event: MessageEvent) => {

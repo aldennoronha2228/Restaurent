@@ -224,3 +224,73 @@ export async function sendDailyReportEmail(params: {
         return { success: false, error: err instanceof Error ? err.message : 'Failed to send email' };
     }
 }
+
+export async function sendSubscriptionReminderEmail(params: {
+    to: string;
+    restaurantName: string;
+    endDate: string;
+    reminderType: 'ending_soon' | 'ended';
+    daysRemaining?: number;
+}): Promise<{ success: boolean; error?: string }> {
+    if (!process.env.RESEND_API_KEY) {
+        console.error('[EMAIL] RESEND_API_KEY not configured');
+        return { success: false, error: 'Email service not configured' };
+    }
+
+    const from = resolveFromEmail();
+    if (!from) {
+        console.error('[EMAIL] RESEND_FROM_EMAIL is required in production');
+        return {
+            success: false,
+            error: 'Email sender not configured. Set RESEND_FROM_EMAIL to a verified domain sender.',
+        };
+    }
+
+    const isEndingSoon = params.reminderType === 'ending_soon';
+    const subject = isEndingSoon
+        ? `${params.restaurantName}: subscription expires in ${params.daysRemaining ?? 2} days`
+        : `${params.restaurantName}: subscription has ended`;
+
+    const headline = isEndingSoon
+        ? 'Your subscription is ending soon'
+        : 'Your subscription has ended';
+
+    const body = isEndingSoon
+        ? `Your NexResto subscription for <strong>${params.restaurantName}</strong> will expire on <strong>${params.endDate}</strong>. Please renew in time to avoid access interruption.`
+        : `Your NexResto subscription for <strong>${params.restaurantName}</strong> ended on <strong>${params.endDate}</strong>. Please renew to restore full dashboard access.`;
+
+    try {
+        const { error } = await getResendClient().emails.send({
+            from,
+            to: [params.to],
+            subject,
+            html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 620px; margin: 0 auto; padding: 28px 16px; color: #0f172a;">
+                    <h1 style="margin: 0 0 10px; font-size: 24px;">${headline}</h1>
+                    <p style="margin: 0 0 14px; color: #334155; line-height: 1.6;">${body}</p>
+
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin: 12px 0 18px;">
+                        <p style="margin: 0; color: #475569; font-size: 14px;">
+                            Restaurant: <strong>${params.restaurantName}</strong><br />
+                            Subscription End Date: <strong>${params.endDate}</strong>
+                        </p>
+                    </div>
+
+                    <p style="margin: 0; color: #64748b; font-size: 12px;">
+                        This is an automated billing reminder from NexResto.
+                    </p>
+                </div>
+            `,
+        });
+
+        if (error) {
+            console.error('[EMAIL] Resend subscription-reminder error:', error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: true };
+    } catch (err) {
+        console.error('[EMAIL] Failed to send subscription reminder email:', err);
+        return { success: false, error: err instanceof Error ? err.message : 'Failed to send email' };
+    }
+}

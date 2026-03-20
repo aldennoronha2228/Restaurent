@@ -68,6 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const urlStoreId = params?.storeId || '';
     const [showConflict, setShowConflict] = useState(false);
     const [displayTenantName, setDisplayTenantName] = useState<string>('NexResto');
+    const [isRestaurantTemporarilyDisabled, setIsRestaurantTemporarilyDisabled] = useState(false);
 
     // Get Super Admin state (God Mode check)
     const {
@@ -123,8 +124,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
     }, [activeStoreId, urlStoreId, loading, userRole, isGodMode]);
 
-    // Check if user has Pro tier
-    const isPro = isImpersonating || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    // Check if user has Pro tier (strict): do not infer Pro access from impersonation.
+    const isPro = isGodMode || isSuperAdmin || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
     const showEndingSoonReminder =
         !isGodMode &&
         !!subscriptionEndDate &&
@@ -140,6 +141,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setDisplayTenantName(fallbackName);
 
         if (!urlStoreId) {
+            setIsRestaurantTemporarilyDisabled(false);
             return;
         }
 
@@ -171,6 +173,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 if (!cancelled && nextName) {
                     setDisplayTenantName(nextName);
                 }
+                if (!cancelled) {
+                    setIsRestaurantTemporarilyDisabled(Boolean(data?.accountTemporarilyDisabled));
+                }
             } catch {
                 // Keep fallback name if request fails.
             }
@@ -198,6 +203,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const filteredNavigation = navigation.filter(item =>
         hasPermission(activeRole, item.permission)
     );
+
+    const activeNavItem = navigation.find((item) =>
+        pathname === item.href ||
+        pathname.startsWith(`${item.href}/`) ||
+        (pathname === `/${urlStoreId}/dashboard` && item.href === `/${urlStoreId}/dashboard/orders`)
+    );
+    const isProRouteBlocked = Boolean(activeNavItem?.proOnly) && !isPro;
 
     const mobilePrimaryNavigation = filteredNavigation.filter((item) =>
         item.basePath === '/dashboard/orders' ||
@@ -294,6 +306,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     if (session && !isGodMode && mustChangePassword) {
         return null; // Will redirect via useEffect
+    }
+
+    if (isRestaurantTemporarilyDisabled) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
+                <div className="max-w-md w-full rounded-3xl border border-slate-700 bg-slate-900 p-8 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-rose-500/20 flex items-center justify-center">
+                        <Lock className="w-8 h-8 text-rose-400" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-white mb-2">Account Temporarily Disabled</h1>
+                    <p className="text-slate-400 text-sm mb-6">
+                        This restaurant account has been temporarily disabled by platform administration.
+                    </p>
+                    <div className="space-y-3">
+                        <button
+                            onClick={handleSignOut}
+                            className="w-full h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold transition-colors"
+                        >
+                            Sign Out
+                        </button>
+                        {isGodMode && (
+                            <button
+                                onClick={() => router.replace('/super-admin/restaurants')}
+                                className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+                            >
+                                Back to Super Admin
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     // ── Inline Session Conflict Overlay ────────────────────────────────────────
@@ -543,18 +587,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             </div>
                                                 <span className="font-semibold text-slate-100 truncate max-w-[170px]" title={displayTenantName}>{displayTenantName}</span>
                                         </div>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => { setMobileMenuOpen(false); handleSignOut(); }}
-                                                    className="px-3 py-1.5 text-xs font-semibold text-rose-100 border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30 rounded-full transition-colors"
-                                                    title="Sign out"
-                                                >
-                                                    Sign Out
-                                                </button>
-                                                <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Close menu">
-                                                    <X className="w-5 h-5 text-slate-100" />
-                                                </button>
-                                            </div>
+                                            <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Close menu">
+                                                <X className="w-5 h-5 text-slate-100" />
+                                            </button>
                                     </div>
                                         <nav className="flex-1 px-3 py-4 space-y-1 premium-sidebar">
                                         {filteredNavigation.map((item) => {
@@ -595,16 +630,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                         </button>
 
                                     </nav>
-
-                                    <div className="px-3 pb-4 premium-sidebar border-t border-white/10">
-                                        <button
-                                            onClick={() => { setMobileMenuOpen(false); handleSignOut(); }}
-                                            className="w-full mt-3 flex items-center gap-3 px-3 py-2.5 rounded-full text-rose-200 hover:bg-rose-500/20 hover:text-rose-100 transition-all"
-                                        >
-                                            <LogOut className="w-5 h-5 flex-shrink-0" />
-                                            <span className="text-sm font-medium">Sign Out</span>
-                                        </button>
-                                    </div>
                                 </div>
                             </motion.div>
                         </motion.div>
@@ -687,7 +712,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                     {/* Page Content */}
                     <div className="p-6 lg:p-8 pb-24 lg:pb-8" key={pathname}>
-                        {children}
+                        {isProRouteBlocked ? (
+                            <div className="max-w-2xl mx-auto rounded-3xl border border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 p-8 text-center">
+                                <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center mb-4">
+                                    <Lock className="w-7 h-7 text-white" />
+                                </div>
+                                <h2 className="text-2xl font-bold text-slate-900">Pro Feature Locked</h2>
+                                <p className="text-slate-600 mt-2">
+                                    {activeNavItem?.name || 'This feature'} is available on Pro plan only.
+                                </p>
+                                <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+                                    <button
+                                        onClick={() => {
+                                            setUpgradeFeature(activeNavItem?.name || 'Pro Feature');
+                                            setShowUpgradeModal(true);
+                                        }}
+                                        className="px-5 py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition-colors"
+                                    >
+                                        Upgrade Plan
+                                    </button>
+                                    <button
+                                        onClick={() => router.push(`/${urlStoreId}/dashboard/orders`)}
+                                        className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-white transition-colors"
+                                    >
+                                        Back to Orders
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            children
+                        )}
 
                         {/* Database Connection Status Footer */}
                         <div className="mt-8 pt-4 border-t border-slate-200/60">

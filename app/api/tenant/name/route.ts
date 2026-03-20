@@ -30,8 +30,10 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 });
         }
 
-        const name = (restDoc.data()?.name as string | undefined) || restaurantId;
-        return NextResponse.json({ name });
+        const data = restDoc.data() || {};
+        const name = (data?.name as string | undefined) || restaurantId;
+        const accountTemporarilyDisabled = Boolean(data?.account_temporarily_disabled);
+        return NextResponse.json({ name, accountTemporarilyDisabled });
     } catch (error: any) {
         return NextResponse.json({ error: error?.message || 'Invalid session' }, { status: 401 });
     }

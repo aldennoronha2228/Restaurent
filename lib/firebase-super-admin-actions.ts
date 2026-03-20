@@ -32,6 +32,7 @@ export interface RestaurantWithOwner {
     last_report_date: string | null;
     subscription_start_date: string | null;
     subscription_end_date: string | null;
+    account_temporarily_disabled?: boolean;
     team_count: number;
     team_roles?: { role: string; count: number }[];
 }
@@ -290,6 +291,7 @@ export async function getAllRestaurants(
                 last_report_date: d.last_report_date || null,
                 subscription_start_date: d.subscription_start_date || null,
                 subscription_end_date: d.subscription_end_date || null,
+                account_temporarily_disabled: Boolean(d.account_temporarily_disabled),
                 team_count: staffSnap.size,
                 team_roles: teamRoles,
             };
@@ -306,6 +308,34 @@ export async function getAllRestaurants(
             pending_renewals: pendingRenewals,
         },
     };
+}
+
+// ─── Temporary Access Control ────────────────────────────────────────────────
+
+export async function setRestaurantTemporaryAccess(
+    restaurantId: string,
+    disabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        await adminFirestore.doc(`restaurants/${restaurantId}`).update({
+            account_temporarily_disabled: disabled,
+            account_temporarily_disabled_at: disabled ? FieldValue.serverTimestamp() : FieldValue.delete(),
+            account_temporarily_reenabled_at: disabled ? FieldValue.delete() : FieldValue.serverTimestamp(),
+        });
+
+        await logActivity(
+            disabled ? 'RESTAURANT_TEMP_DISABLED' : 'RESTAURANT_TEMP_REENABLED',
+            disabled ? 'Restaurant temporarily disabled' : 'Restaurant re-enabled',
+            disabled ? 'warning' : 'success',
+            { restaurant_id: restaurantId, disabled },
+            restaurantId
+        );
+
+        revalidatePath('/super-admin');
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
 
 // ─── Update Restaurant Subscription ──────────────────────────────────────────

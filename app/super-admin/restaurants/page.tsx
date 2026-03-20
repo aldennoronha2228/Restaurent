@@ -20,6 +20,7 @@ import {
     getAllRestaurants,
     updateRestaurantSubscription,
     updateRestaurantStatus,
+    setRestaurantTemporaryAccess,
     archiveRestaurant,
     deleteRestaurant,
     resetUserPassword,
@@ -184,6 +185,19 @@ export default function RestaurantManager() {
             loadRestaurants();
         } else {
             setActionMessage({ type: 'error', text: result.error || 'Failed to update' });
+        }
+    };
+
+    const handleTemporaryAccessToggle = async (restaurantId: string, disable: boolean) => {
+        const result = await setRestaurantTemporaryAccess(restaurantId, disable);
+        if (result.success) {
+            setActionMessage({
+                type: 'success',
+                text: disable ? 'Restaurant temporarily disabled' : 'Restaurant re-enabled',
+            });
+            loadRestaurants();
+        } else {
+            setActionMessage({ type: 'error', text: result.error || 'Failed to update access' });
         }
     };
 
@@ -493,6 +507,9 @@ export default function RestaurantManager() {
                                                 <div>
                                                     <p className="text-white font-medium">{restaurant.name}</p>
                                                     <p className="text-slate-400 text-xs">{restaurant.id}</p>
+                                                    {restaurant.account_temporarily_disabled && (
+                                                        <p className="text-[10px] text-amber-300 font-semibold mt-0.5">Temporarily Disabled</p>
+                                                    )}
                                                 </div>
                                             </div>
                                         </td>
@@ -655,6 +672,21 @@ export default function RestaurantManager() {
                                                             >
                                                                 <CreditCard className="w-4 h-4" />
                                                                 Change Tier
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    handleTemporaryAccessToggle(restaurant.id, !restaurant.account_temporarily_disabled);
+                                                                    setActiveMenu(null);
+                                                                }}
+                                                                className={cn(
+                                                                    'w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors',
+                                                                    restaurant.account_temporarily_disabled
+                                                                        ? 'text-emerald-300 hover:bg-emerald-500/10'
+                                                                        : 'text-amber-300 hover:bg-amber-500/10'
+                                                                )}
+                                                            >
+                                                                {restaurant.account_temporarily_disabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                                                {restaurant.account_temporarily_disabled ? 'Re-enable Website' : 'Temporarily Disable'}
                                                             </button>
                                                             <button
                                                                 onClick={() => {

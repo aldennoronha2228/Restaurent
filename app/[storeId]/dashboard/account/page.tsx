@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
     User, Mail, Shield, Lock, ShieldAlert, Loader2,
     Trash2, Plus, UserPlus, ShieldCheck, Key, FileText, Sparkles,
-    ChevronDown, Crown, Users, Briefcase, ToggleLeft, ToggleRight, UserX, Copy, Check
+    ChevronDown, Crown, Users, Briefcase, ToggleLeft, ToggleRight, UserX, Copy, Check, CreditCard, CalendarDays
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { auth } from '@/lib/firebase';
 import { RoleGuard } from '@/components/dashboard/RoleGuard';
+import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
 
 interface AdminUser {
     email: string;
@@ -37,7 +38,7 @@ const TEAM_LIMITS = {
 };
 
 export default function AccountPage() {
-    const { user, subscriptionTier } = useAuth();
+    const { user, subscriptionTier, subscriptionStatus, subscriptionEndDate, subscriptionDaysRemaining } = useAuth();
     const { session: superAdminSession } = useSuperAdminAuth();
     const { storeId: tenantId, isSuperAdmin } = useRestaurant();
 
@@ -71,6 +72,7 @@ export default function AccountPage() {
     const [newUserCredentials, setNewUserCredentials] = useState<{ email: string; password: string } | null>(null);
     const [copiedPassword, setCopiedPassword] = useState(false);
     const [copiedRowEmail, setCopiedRowEmail] = useState<string | null>(null);
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
     // ─── Security Token Storage ───────────────────────────────────────────────
     // Once verified, we keep the clean key here to use for all actions.
@@ -81,6 +83,12 @@ export default function AccountPage() {
     const teamCount = admins.length;
     const canAddMore = teamCount < teamLimit;
     const isAtLimit = teamCount >= teamLimit;
+    const tierLabel =
+        subscriptionTier === '2.5k' ? 'Enterprise ₹2.5k' :
+            subscriptionTier === '2k' ? 'Pro ₹2k' :
+                subscriptionTier === '1k' ? 'Basic ₹1k' :
+                    subscriptionTier === 'pro' ? 'Pro' : 'Starter';
+    const statusLabel = (subscriptionStatus || 'active').replace('_', ' ');
 
     // ─── Fetch Admins (Privileged) ───────────────────────────────────────────
     const fetchAdmins = async (key: string) => {
@@ -350,6 +358,54 @@ export default function AccountPage() {
                 </div>
 
                 {/* Email Reports Toggle (Pro Only) */}
+                <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-visible">
+                    <div className="px-6 py-5 flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                                <CreditCard className="w-5 h-5 text-indigo-600" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-slate-900 leading-tight">Subscription Settings</h3>
+                                <p className="text-xs text-slate-500 mt-0.5">Manage your current plan from Account Settings.</p>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-700">
+                                        {tierLabel}
+                                    </span>
+                                    <span className={cn(
+                                        'px-2.5 py-1 rounded-full text-[11px] font-semibold',
+                                        subscriptionStatus === 'active' || subscriptionStatus === 'trial'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : subscriptionStatus === 'past_due'
+                                                ? 'bg-amber-100 text-amber-700'
+                                                : 'bg-rose-100 text-rose-700'
+                                    )}>
+                                        {statusLabel}
+                                    </span>
+                                </div>
+                                {!!subscriptionEndDate && (
+                                    <div className="mt-2 text-xs text-slate-500 flex items-center gap-1.5">
+                                        <CalendarDays className="w-3.5 h-3.5" />
+                                        Ends on {subscriptionEndDate}
+                                        {typeof subscriptionDaysRemaining === 'number' && (
+                                            <span className="text-slate-400">({subscriptionDaysRemaining} day{subscriptionDaysRemaining === 1 ? '' : 's'} left)</span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setShowUpgradeModal(true)}
+                                className="h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
+                            >
+                                Manage Plan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-visible">
                     <div className="px-6 py-5 flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -803,6 +859,12 @@ export default function AccountPage() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <UpgradeModal
+                isOpen={showUpgradeModal}
+                onClose={() => setShowUpgradeModal(false)}
+                featureName="Subscription Settings"
+            />
 
         </RoleGuard>
     );
