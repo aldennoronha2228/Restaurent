@@ -654,54 +654,18 @@ function CameraModal({
                                             .then(data => {
                                                 if (!data) return;
                                                 const pose = cameraPoseRef.current;
-                                                // ── True PnP Camera Math (Perspective-n-Point) ──
-                                                // Assuming standard phone height (1.4m) and table height on the floor
-                                                const bboxBottomY = b.cy + (b.h / 2);
-                                                const ndcX = (b.cx / width) * 2 - 1;
-                                                const ndcY = 1 - (bboxBottomY / height) * 2;
-                                                
-                                                const vFovRad = (60 * Math.PI) / 180;
-                                                const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * (width / height));
-                                                
-                                                const angleY = ndcY * (vFovRad / 2); // Pitch angle pointing at table base
-                                                const angleX = ndcX * (hFovRad / 2); // Yaw angle left/right
-                                                
-                                                // Distance to table assuming standard human camera height
-                                                const cameraHeight = 1.4; 
-                                                // Prevent division by zero or negative depths when looking at the ceiling
-                                                const distanceZ = angleY < -0.05 ? Math.abs(cameraHeight / Math.tan(angleY)) : 4.0;
-                                                const positionX = distanceZ * Math.tan(angleX);
-
-                                                const yoloDetections = (data.boxes as any[]).map((b: any) => {
-                                                    const bboxBottomY = b.cy + (b.h / 2);
-                                                    const ndcX = (b.cx / width) * 2 - 1;
-                                                    const ndcY = 1 - (bboxBottomY / height) * 2;
-                                                    
-                                                    const vFovRad = (60 * Math.PI) / 180;
-                                                    const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * (width / height));
-                                                    
-                                                    const angleY = ndcY * (vFovRad / 2);
-                                                    const angleX = ndcX * (hFovRad / 2);
-                                                    
-                                                    const distanceZ = angleY < -0.05 ? Math.abs(1.4 / Math.tan(angleY)) : 4.0;
-                                                    const positionX = distanceZ * Math.tan(angleX);
-
-                                                    return {
-                                                        cx: b.cx,
-                                                        cy: b.cy,
-                                                        w:  b.w,
-                                                        h:  b.h,
-                                                        worldX: Math.max(-SCAN_WORLD_WIDTH / 2, Math.min(SCAN_WORLD_WIDTH / 2, pose.x + positionX)),
-                                                        worldZ: Math.max(-SCAN_WORLD_DEPTH / 2, Math.min(SCAN_WORLD_DEPTH / 2, pose.z - distanceZ)),
-                                                        confidence: b.confidence,
-                                                        aspectRatio: b.w / Math.max(b.h, 1),
-                                                        // Pass through intelligent VLM annotations from backend
-                                                        type: b.semantic_type || 'standard',
-                                                        seats: b.seats || 4,
-                                                        rotationY: b.orientation || 0,
-                                                        depth_z: b.depth_z,
-                                                    };
-                                                });
+                                                const yoloDetections = (data.boxes as any[]).map((b: any) => ({
+                                                    cx: b.cx,
+                                                    cy: b.cy,
+                                                    w:  b.w,
+                                                    h:  b.h,
+                                                    worldX: Math.max(-SCAN_WORLD_WIDTH / 2, Math.min(SCAN_WORLD_WIDTH / 2,
+                                                        pose.x + ((b.cx / width) - 0.5) * 6.2)),
+                                                    worldZ: Math.max(-SCAN_WORLD_DEPTH / 2, Math.min(SCAN_WORLD_DEPTH / 2,
+                                                        pose.z + ((b.cy / height) - 0.66) * 4.8)),
+                                                    confidence: b.confidence,
+                                                    aspectRatio: b.w / Math.max(b.h, 1),
+                                                }));
                                                 // Always ingest (even empty) — but only once per response
                                                 ingestDetections(yoloDetections, currentTick);
                                             })

@@ -101,33 +101,10 @@ def run_inference(img: np.ndarray) -> list:
             })
 
     boxes = []
-    # ── MOCK INTEGRATION: VLM & Metric Depth logic applied per box ──
-    # Compute screen height to fake depth based on position
-    screen_h = img.shape[0]
-
-    def enrich_box(b):
-        # 1. Depth Pro Absolute Depth reasoning (mock)
-        bottom_y = b["cy"] + (b["h"] / 2)
-        percentage_down = max(0.01, (bottom_y - (screen_h / 2)) / (screen_h / 2))
-        absolute_depth_z = min(1.0 / percentage_down, 15.0)  
-
-        # 2. Qwen-VL Spatial reasoning (mock based on math)
-        aspect_ratio = float(b["w"]) / max(float(b["h"]), 1.0)
-        inferred_type = "booth" if aspect_ratio > 1.3 else "standard"
-        inferred_orientation = 90 if aspect_ratio > 1.5 else 0
-        seats = 6 if aspect_ratio > 1.3 else 4
-
-        b["depth_z"] = absolute_depth_z
-        b["semantic_type"] = inferred_type
-        b["orientation"] = inferred_orientation
-        b["seats"] = seats
-        return b
-
     for t in tables:
-        boxes.append(enrich_box({"cx": t["cx"], "cy": t["cy"], "w": t["w"], "h": t["h"], "confidence": t["confidence"]}))
+        boxes.append({"cx": t["cx"], "cy": t["cy"], "w": t["w"], "h": t["h"], "confidence": t["confidence"]})
     for c in clusters:
-        boxes.append(enrich_box(c))
-        
+        boxes.append(c)
     return boxes
 
 
