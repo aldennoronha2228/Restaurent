@@ -200,6 +200,9 @@ function CameraModal({
         misses: number;
         lastSeenTick: number;
     }>>(new Map());
+    // Guard: only 1 YOLO request in-flight at a time to prevent concurrent miss-storms
+    const yoloInFlightRef = useRef(false);
+    const lastYoloMissTickRef = useRef(0);
 
     const [cameraError, setCameraError] = useState<string | null>(null);
     const [isStartingCamera, setIsStartingCamera] = useState(false);
@@ -210,7 +213,9 @@ function CameraModal({
 
     const SCAN_WORLD_WIDTH = 12;
     const SCAN_WORLD_DEPTH = 8;
-    const FRAME_SKIP = 5;
+    // FRAME_SKIP=3: call YOLO every 3rd frame (~10x/sec at 30fps)
+    // yolov8n at imgsz=640 responds in ~120ms — 1 request at a time
+    const FRAME_SKIP = 3;
 
     const syncMiniMapFromTracking = useCallback(() => {
         const all = Array.from(trackingMapRef.current.values());
@@ -438,7 +443,8 @@ function CameraModal({
             }
 
             if (!closest) {
-                if (detection.confidence < 0.62 || trackingMapRef.current.size >= 24) {
+                // Lower threshold to 0.22 so YOLO detections (conf ~0.25+) register
+                if (detection.confidence < 0.22 || trackingMapRef.current.size >= 30) {
                     continue;
                 }
                 const id = `T-${String(trackingMapRef.current.size + 1).padStart(2, '0')}`;
@@ -485,7 +491,8 @@ function CameraModal({
             tracked.misses = 0;
             tracked.lastSeenTick = tick;
 
-            if (!tracked.locked && tracked.hitStreak >= 7 && tracked.stableFrames >= 6 && tracked.samples >= 6 && tracked.confidence >= 0.66) {
+            // Lock after just 2 consecutive hits so tables lock within ~300ms
+            if (!tracked.locked && tracked.hitStreak >= 2 && tracked.stableFrames >= 1 && tracked.samples >= 2 && tracked.confidence >= 0.25) {
                 tracked.locked = true;
                 navigator.vibrate?.(35);
             }
@@ -497,9 +504,10 @@ function CameraModal({
                 continue;
             }
             if (!tracked.locked) {
-                const stale = tracked.misses > 8;
-                const weak = tracked.samples >= 4 && tracked.confidence < 0.5;
-                const tooBrief = tracked.samples < 4 && tracked.misses > 3;
+                // Only age out if truly stale — give tracks plenty of time to stabilize
+                const stale = tracked.misses > 20;
+                const weak = tracked.samples >= 8 && tracked.confidence < 0.15;
+                const tooBrief = tracked.samples < 2 && tracked.misses > 10;
                 if (stale || weak || tooBrief) {
                     trackingMapRef.current.delete(key);
                 }
@@ -627,12 +635,84 @@ function CameraModal({
                             frameNumberRef.current += 1;
 
                             if (frameNumberRef.current % FRAME_SKIP === 0) {
-                                const img = pctx.getImageData(0, 0, width, height);
-                                const detections = detectFrameCandidates(img, width, height, frameNumberRef.current);
-                                ingestDetections(detections, frameNumberRef.current);
+                                const currentTick = frameNumberRef.current;
+
+                                // ── PURE YOLO, single-flight guard ──
+                                // Only fire if no request is currently in-flight.
+                                // This prevents concurrent responses all calling ingestDetections
+                                // simultaneously and mass-incrementing misses (the miss-storm bug).
+                                if (!yoloInFlightRef.current) {
+                                    yoloInFlightRef.current = true;
+
+                                    processing.toBlob((blob) => {
+                                        if (!blob) { yoloInFlightRef.current = false; return; }
+                                        const formData = new FormData();
+                                        formData.append('file', blob, 'frame.jpeg');
+
+                                        fetch('http://localhost:8000/predict', { method: 'POST', body: formData })
+                                            .then(r => r.ok ? r.json() : null)
+                                            .then(data => {
+                                                if (!data) return;
+                                                const pose = cameraPoseRef.current;
+                                                // ── True PnP Camera Math (Perspective-n-Point) ──
+                                                // Assuming standard phone height (1.4m) and table height on the floor
+                                                const bboxBottomY = b.cy + (b.h / 2);
+                                                const ndcX = (b.cx / width) * 2 - 1;
+                                                const ndcY = 1 - (bboxBottomY / height) * 2;
+                                                
+                                                const vFovRad = (60 * Math.PI) / 180;
+                                                const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * (width / height));
+                                                
+                                                const angleY = ndcY * (vFovRad / 2); // Pitch angle pointing at table base
+                                                const angleX = ndcX * (hFovRad / 2); // Yaw angle left/right
+                                                
+                                                // Distance to table assuming standard human camera height
+                                                const cameraHeight = 1.4; 
+                                                // Prevent division by zero or negative depths when looking at the ceiling
+                                                const distanceZ = angleY < -0.05 ? Math.abs(cameraHeight / Math.tan(angleY)) : 4.0;
+                                                const positionX = distanceZ * Math.tan(angleX);
+
+                                                const yoloDetections = (data.boxes as any[]).map((b: any) => {
+                                                    const bboxBottomY = b.cy + (b.h / 2);
+                                                    const ndcX = (b.cx / width) * 2 - 1;
+                                                    const ndcY = 1 - (bboxBottomY / height) * 2;
+                                                    
+                                                    const vFovRad = (60 * Math.PI) / 180;
+                                                    const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * (width / height));
+                                                    
+                                                    const angleY = ndcY * (vFovRad / 2);
+                                                    const angleX = ndcX * (hFovRad / 2);
+                                                    
+                                                    const distanceZ = angleY < -0.05 ? Math.abs(1.4 / Math.tan(angleY)) : 4.0;
+                                                    const positionX = distanceZ * Math.tan(angleX);
+
+                                                    return {
+                                                        cx: b.cx,
+                                                        cy: b.cy,
+                                                        w:  b.w,
+                                                        h:  b.h,
+                                                        worldX: Math.max(-SCAN_WORLD_WIDTH / 2, Math.min(SCAN_WORLD_WIDTH / 2, pose.x + positionX)),
+                                                        worldZ: Math.max(-SCAN_WORLD_DEPTH / 2, Math.min(SCAN_WORLD_DEPTH / 2, pose.z - distanceZ)),
+                                                        confidence: b.confidence,
+                                                        aspectRatio: b.w / Math.max(b.h, 1),
+                                                        // Pass through intelligent VLM annotations from backend
+                                                        type: b.semantic_type || 'standard',
+                                                        seats: b.seats || 4,
+                                                        rotationY: b.orientation || 0,
+                                                        depth_z: b.depth_z,
+                                                    };
+                                                });
+                                                // Always ingest (even empty) — but only once per response
+                                                ingestDetections(yoloDetections, currentTick);
+                                            })
+                                            .catch(() => { /* network error */ })
+                                            .finally(() => { yoloInFlightRef.current = false; });
+                                    }, 'image/jpeg', 0.9);
+                                }
+
                                 const locked = Array.from(trackingMapRef.current.values()).filter((x) => x.locked).length;
                                 const provisional = Math.max(0, trackingMapRef.current.size - locked);
-                                setScanLabel(`Tracking ${provisional} provisional • locked ${locked} • ${Math.max(1, FRAME_SKIP)}-frame AI skip`);
+                                setScanLabel(`Tables locked: ${locked}${provisional > 0 ? `  •  ${provisional} scanning` : ''}`);
                             }
 
                             drawTracingOverlay(octx, width, height, now);
@@ -783,17 +863,48 @@ function CameraModal({
                             <ContactShadows opacity={0.28} scale={SCAN_WORLD_WIDTH} blur={2} far={8} position={[0, 0.03, 0]} />
 
                             {scanPath.length >= 2 && (
-                                <Line points={scanPath} color="#22d3ee" lineWidth={1.6} />
+                                <Line points={scanPath} color="#00f3ff" lineWidth={2} opacity={0.6} />
                             )}
 
-                            {miniMapTables.map((table) => (
-                                <group key={`mini-${table.id}`} position={[table.x, 0, table.z]}>
-                                    <mesh castShadow receiveShadow position={[0, 0.25, 0]}>
-                                        <boxGeometry args={[0.58, 0.5, 0.58]} />
-                                        <meshStandardMaterial color={table.locked ? '#4ade80' : '#f97316'} emissive={table.locked ? '#14532d' : '#7c2d12'} emissiveIntensity={0.5} roughness={0.35} />
-                                    </mesh>
-                                </group>
-                            ))}
+                            {miniMapTables.map((table) => {
+                                const neonColor = table.locked ? '#00f3ff' : '#b900ff';
+                                return (
+                                    <group key={`mini-${table.id}`} position={[table.x, 0, table.z]}>
+                                        {/* Holographic Glowing Core */}
+                                        <mesh position={[0, 0.375, 0]}>
+                                            <boxGeometry args={[0.9, 0.75, 0.9]} />
+                                            <meshStandardMaterial 
+                                                color={neonColor} 
+                                                emissive={neonColor} 
+                                                emissiveIntensity={table.locked ? 1.2 : 0.6} 
+                                                transparent 
+                                                opacity={table.locked ? 0.2 : 0.1} 
+                                                wireframe={!table.locked}
+                                            />
+                                        </mesh>
+                                        
+                                        {/* Solid Glassmorphism Top */}
+                                        <mesh position={[0, 0.76, 0]}>
+                                            <boxGeometry args={[1.0, 0.04, 1.0]} />
+                                            <meshPhysicalMaterial 
+                                                color="#ffffff" 
+                                                transmission={0.9}
+                                                opacity={1} 
+                                                metalness={0.2} 
+                                                roughness={0.1} 
+                                                ior={1.5} 
+                                            />
+                                        </mesh>
+
+                                        {/* Floating UI Label */}
+                                        <Html position={[0, 1.1, 0]} center>
+                                            <div className="backdrop-blur-md bg-black/40 border border-[#00f3ff]/30 px-2 py-0.5 text-[#00f3ff] text-[10px] font-mono rounded-full uppercase tracking-widest pointer-events-none drop-shadow-md whitespace-nowrap">
+                                                {table.id}
+                                            </div>
+                                        </Html>
+                                    </group>
+                                );
+                            })}
 
                             <OrbitControls
                                 enablePan={false}
@@ -2033,38 +2144,48 @@ export default function TablesQRCodesPage() {
         await applyAiLayout(file);
     }, [applyAiLayout]);
 
-    const onCameraScanComplete = useCallback(async ({ previewUrl }: { previewUrl: string; detectedTables: DetectedTable3D[] }) => {
+    const onCameraScanComplete = useCallback(({ previewUrl, detectedTables: yoloTables }: { previewUrl: string; detectedTables: DetectedTable3D[] }) => {
         setShowCameraModal(false);
 
         if (previewUrl) setCapturedImagePreview(previewUrl);
 
-        const response = await fetch(previewUrl);
-        const blob = await response.blob();
-
-        setAutoLayoutStep('scanning');
-        setIsAiScanning(true);
-        try {
-            const aiTables = await generateLayoutFromImage(blob);
-            const nextDetected = aiTables.map((item, idx) => ({
-                ...item,
-                seats: tables[idx]?.seats || 4,
-                elevation: 0,
-                rotationY: 0,
-            }));
-
-            setDetectedTables(nextDetected);
+        // ── Use YOLO detections directly ──
+        // The camera scanner already ran YOLO, identified table positions in world-space,
+        // and locked them. Skip re-sending to Gemini; go straight into the 3D editor.
+        if (yoloTables.length > 0) {
+            setDetectedTables(yoloTables);
             setReviewViewMode(isMobileViewport ? '2d' : '3d');
             setAutoLayoutStep('review3d');
-            toast.success(`AI Analysis Complete: ${nextDetected.length} tables detected`);
+            toast.success(`YOLO scan complete — ${yoloTables.length} table${yoloTables.length > 1 ? 's' : ''} detected. Drag to adjust.`);
             return;
-        } catch {
-            setAutoLayoutStep('idle');
-            toast.error('AI analysis was not confident. Please retake a clearer photo (top angle, good lighting, full table area).');
-            return;
-        } finally {
-            setIsAiScanning(false);
         }
-    }, [applyAiLayout, generateLayoutFromImage, isMobileViewport, tables]);
+
+        // Fallback: if YOLO found nothing, re-analyze the captured frame with Gemini AI
+        toast.info('No tables locked by YOLO scan. Re-analyzing with AI…');
+        setAutoLayoutStep('scanning');
+        setIsAiScanning(true);
+
+        fetch(previewUrl)
+            .then(r => r.blob())
+            .then(blob => generateLayoutFromImage(blob))
+            .then(aiTables => {
+                const nextDetected = aiTables.map((item, idx) => ({
+                    ...item,
+                    seats: tables[idx]?.seats || 4,
+                    elevation: 0,
+                    rotationY: 0,
+                }));
+                setDetectedTables(nextDetected);
+                setReviewViewMode(isMobileViewport ? '2d' : '3d');
+                setAutoLayoutStep('review3d');
+                toast.success(`AI Analysis Complete: ${nextDetected.length} tables detected`);
+            })
+            .catch(() => {
+                setAutoLayoutStep('idle');
+                toast.error('AI analysis was not confident. Please retake a clearer photo.');
+            })
+            .finally(() => setIsAiScanning(false));
+    }, [generateLayoutFromImage, isMobileViewport, tables]);
 
     const updateDetectedTable = useCallback((id: string, patch: Partial<DetectedTable3D>) => {
         setDetectedTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
