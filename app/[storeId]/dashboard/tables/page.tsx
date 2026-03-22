@@ -1383,12 +1383,12 @@ export default function TablesQRCodesPage() {
         try {
             const aiTables = await generateLayoutFromImage(imageFile);
 
-            const nextDetected = aiTables.map((item, idx) => ({
+            const nextDetected: DetectedTable3D[] = aiTables.map((item, idx) => ({
                 ...item,
                 seats: tables[idx]?.seats || 4,
                 elevation: 0,
                 rotationY: 0,
-                tableShape: item.type === 'booth' ? 'rectangle' : 'round',
+                tableShape: (item.type === 'booth' ? 'rectangle' : 'round') as TableShape,
                 tableColor: '#8b5e3c' as TableColor,
             }));
 
