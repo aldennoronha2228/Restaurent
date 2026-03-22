@@ -14,12 +14,32 @@ const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
 }).format(value);
 
+const LAST_TABLE_STORAGE_KEY = 'nexresto:last-table-id';
+
 function OrderSummaryContent() {
     const { cart, totalPrice, clearCart, totalItems } = useCart();
     const router = useRouter();
     const searchParams = useSearchParams();
-    const tableId = searchParams.get('table') ?? '';
+    const queryTableId =
+        searchParams.get('table') ??
+        searchParams.get('tableId') ??
+        searchParams.get('table_id') ??
+        searchParams.get('t') ??
+        '';
+    const [tableId, setTableId] = React.useState('');
     const restaurantId = searchParams.get('restaurant') ?? undefined;
+
+    React.useEffect(() => {
+        const normalized = (queryTableId || '').trim();
+        if (normalized) {
+            setTableId(normalized);
+            localStorage.setItem(LAST_TABLE_STORAGE_KEY, normalized);
+            return;
+        }
+
+        const remembered = (localStorage.getItem(LAST_TABLE_STORAGE_KEY) || '').trim();
+        setTableId(remembered);
+    }, [queryTableId]);
 
     const buildMenuUrl = () => {
         const params = new URLSearchParams();

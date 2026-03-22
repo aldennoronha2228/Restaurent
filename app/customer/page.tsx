@@ -57,6 +57,8 @@ const DEFAULT_BRANDING: CustomerBranding = {
     featuredImages: [],
 };
 
+const LAST_TABLE_STORAGE_KEY = 'nexresto:last-table-id';
+
 function normalizeBranding(raw: any): CustomerBranding {
     const overlay = Number(raw?.heroOverlayOpacity);
     const featuredImages = Array.isArray(raw?.featuredImages)
@@ -112,7 +114,13 @@ function CustomerMenuContent() {
     const { addToCart, setIsCartOpen, totalItems, totalPrice } = useCart();
     const router = useRouter();
     const searchParams = useSearchParams();
-    const tableId = searchParams.get('table') ?? '';
+    const tableIdFromQuery =
+        searchParams.get('table') ??
+        searchParams.get('tableId') ??
+        searchParams.get('table_id') ??
+        searchParams.get('t') ??
+        '';
+    const [resolvedTableId, setResolvedTableId] = useState('');
     const restaurantId = searchParams.get('restaurant') ?? '';
     const isPreviewMode = searchParams.get('preview') === '1';
     const [branding, setBranding] = useState<CustomerBranding>(DEFAULT_BRANDING);
@@ -120,11 +128,23 @@ function CustomerMenuContent() {
 
     const buildCustomerUrl = (path: string) => {
         const params = new URLSearchParams();
-        if (tableId) params.set('table', tableId);
+        if (resolvedTableId) params.set('table', resolvedTableId);
         if (restaurantId) params.set('restaurant', restaurantId);
         const qs = params.toString();
         return `${path}${qs ? `?${qs}` : ''}`;
     };
+
+    useEffect(() => {
+        const normalized = (tableIdFromQuery || '').trim();
+        if (normalized) {
+            setResolvedTableId(normalized);
+            localStorage.setItem(LAST_TABLE_STORAGE_KEY, normalized);
+            return;
+        }
+
+        const remembered = (localStorage.getItem(LAST_TABLE_STORAGE_KEY) || '').trim();
+        setResolvedTableId(remembered);
+    }, [tableIdFromQuery]);
 
     const refreshTokens = async () => {
         const jobs: Promise<unknown>[] = [];
@@ -367,7 +387,7 @@ function CustomerMenuContent() {
                 categories={categories}
                 activeCategory={activeCategory}
                 items={menuItems}
-                tableId={tableId}
+                tableId={resolvedTableId}
                 totalItems={totalItems}
                 totalPrice={totalPrice}
                 loading={loading}
@@ -381,7 +401,7 @@ function CustomerMenuContent() {
                 onOpenCart={() => setIsCartOpen(true)}
                 onOpenOrders={() => router.push(buildCustomerUrl('/customer/order-history'))}
             />
-            <CartDrawer tableId={tableId} restaurantId={restaurantId || undefined} />
+            <CartDrawer tableId={resolvedTableId} restaurantId={restaurantId || undefined} />
         </div>
     );
 }

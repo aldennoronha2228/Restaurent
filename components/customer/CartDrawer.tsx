@@ -13,19 +13,36 @@ const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
 }).format(value);
 
+const LAST_TABLE_STORAGE_KEY = 'nexresto:last-table-id';
+
+function normalizeTableValue(value: string) {
+    return value.trim();
+}
+
 export const CartDrawer: React.FC<{ tableId?: string; restaurantId?: string }> = ({ tableId = '', restaurantId }) => {
     const { cart, isCartOpen, setIsCartOpen, totalPrice, updateQuantity, removeFromCart } = useCart();
     const router = useRouter();
-    const [manualTable, setManualTable] = React.useState(tableId || '');
+    const [manualTable, setManualTable] = React.useState('');
 
     // Sync state if URL prop changes
     React.useEffect(() => {
-        setManualTable(tableId || '');
+        const fromUrl = normalizeTableValue(tableId || '');
+        if (fromUrl) {
+            setManualTable(fromUrl);
+            localStorage.setItem(LAST_TABLE_STORAGE_KEY, fromUrl);
+            return;
+        }
+
+        const saved = normalizeTableValue(localStorage.getItem(LAST_TABLE_STORAGE_KEY) || '');
+        setManualTable(saved);
     }, [tableId]);
 
     const handleCheckout = () => {
         setIsCartOpen(false);
-        const finalTable = manualTable.trim();
+        const finalTable = normalizeTableValue(manualTable);
+        if (finalTable) {
+            localStorage.setItem(LAST_TABLE_STORAGE_KEY, finalTable);
+        }
         const params = new URLSearchParams();
         if (finalTable) params.set('table', finalTable);
         if (restaurantId) params.set('restaurant', restaurantId);
@@ -87,7 +104,7 @@ export const CartDrawer: React.FC<{ tableId?: string; restaurantId?: string }> =
                                         value={manualTable}
                                         onChange={e => setManualTable(e.target.value)}
                                         className="border-none bg-white shadow-sm rounded-lg px-3 py-2 w-full text-sm outline-none focus:ring-2 focus:ring-[#D4AF37]"
-                                        placeholder="e.g. 10 or T-05 (optional)"
+                                        placeholder="e.g. 10 or T-05"
                                         readOnly={!!tableId}
                                     />
                                 </div>

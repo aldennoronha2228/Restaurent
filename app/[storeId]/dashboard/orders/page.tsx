@@ -27,6 +27,16 @@ const tableStatusConfig = {
     reserved: { color: 'bg-amber-50', border: 'border-amber-400', text: 'text-amber-700' },
 };
 
+const inrFormatter = new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+});
+
+function formatINR(value: number) {
+    return inrFormatter.format(Number.isFinite(value) ? value : 0);
+}
+
 const FLOOR_SOURCE_WIDTH = 1000;
 const FLOOR_SOURCE_HEIGHT = 600;
 const FLOOR_WORLD_WIDTH = 14;
@@ -258,6 +268,8 @@ export default function LiveOrdersPage() {
     const [isMobileViewport, setIsMobileViewport] = useState(false);
     const [useServerFallback, setUseServerFallback] = useState(true);
     const updateQueue = useRef<Record<string, Promise<void>>>({});
+    const seenOrderIdsRef = useRef<Set<string>>(new Set());
+    const hasUserInteractedRef = useRef(false);
 
     const { storeId: tenantId, db: contextDb, loading: tenantLoading, subscriptionTier } = useRestaurant();
 
@@ -355,6 +367,20 @@ export default function LiveOrdersPage() {
     }, []);
 
     useEffect(() => {
+        const markInteracted = () => {
+            hasUserInteractedRef.current = true;
+        };
+
+        window.addEventListener('pointerdown', markInteracted, { once: true });
+        window.addEventListener('keydown', markInteracted, { once: true });
+
+        return () => {
+            window.removeEventListener('pointerdown', markInteracted);
+            window.removeEventListener('keydown', markInteracted);
+        };
+    }, []);
+
+    useEffect(() => {
         if (!tenantId || !contextDb) return;
 
         let fallbackInterval: ReturnType<typeof setInterval> | null = null;
@@ -448,6 +474,46 @@ export default function LiveOrdersPage() {
         }
     }, [tenantId, getActiveToken]);
 
+    const playNewOrderAlert = useCallback(async () => {
+        if (typeof window === 'undefined' || !hasUserInteractedRef.current) return;
+
+        try {
+            const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+            if (!Ctx) return;
+
+            const ctx = new Ctx();
+            await ctx.resume();
+
+            const now = ctx.currentTime;
+            const frequencies = [880, 1174];
+
+            frequencies.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                const start = now + i * 0.14;
+                const end = start + 0.11;
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, start);
+
+                gain.gain.setValueAtTime(0.0001, start);
+                gain.gain.exponentialRampToValueAtTime(0.12, start + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(start);
+                osc.stop(end);
+            });
+
+            window.setTimeout(() => {
+                ctx.close().catch(() => { });
+            }, 450);
+        } catch {
+            // Ignore audio failures to keep order flow uninterrupted.
+        }
+    }, []);
+
     const loadOrdersViaServer = useCallback(async () => {
         if (!tenantId) return;
         const token = await getActiveToken();
@@ -540,9 +606,29 @@ export default function LiveOrdersPage() {
         };
     }, [tenantId, contextDb, useServerFallback, loadOrdersViaServer]);
 
+    // Play a short alert when brand-new incoming orders appear.
+    useEffect(() => {
+        const currentIds = new Set(orders.map((o) => o.id));
+
+        if (seenOrderIdsRef.current.size === 0) {
+            seenOrderIdsRef.current = currentIds;
+            return;
+        }
+
+        const hasNewIncomingOrder = orders.some(
+            (o) => o.status === 'new' && !seenOrderIdsRef.current.has(o.id)
+        );
+
+        if (hasNewIncomingOrder) {
+            playNewOrderAlert();
+        }
+
+        seenOrderIdsRef.current = currentIds;
+    }, [orders, playNewOrderAlert]);
+
     // Automatically sync table status based on active orders
     useEffect(() => {
-        if (!orders) return;
+        if (!orders?.length && !floorTables.length) return;
 
         const activeTableIds = new Set(
             orders
@@ -550,39 +636,38 @@ export default function LiveOrdersPage() {
                 .map(o => o.table.toString().trim().toLowerCase())
         );
 
-        import('@/data/sharedData').then(({ getTables, setTables }) => {
-            const currentTables = getTables(tenantId || undefined);
-            let changed = false;
-            const updatedTables = currentTables.map(t => {
-                // Check if the table ID or Name matches the order's table field
-                const strippedId = t.id.replace('T-', ''); // "05"
-                const numStr = parseInt(strippedId, 10).toString(); // "5"
-                const hasActiveOrder = activeTableIds.has(t.id.toLowerCase()) ||
-                    activeTableIds.has(t.name.toLowerCase()) ||
-                    activeTableIds.has(strippedId.toLowerCase()) ||
-                    activeTableIds.has(numStr.toLowerCase()) ||
-                    activeTableIds.has(`table ${numStr}`);
+        let changed = false;
+        const updatedTables = floorTables.map(t => {
+            // Check if the table ID or Name matches the order's table field
+            const strippedId = t.id.replace('T-', ''); // "05"
+            const numStr = parseInt(strippedId, 10).toString(); // "5"
+            const hasActiveOrder = activeTableIds.has(t.id.toLowerCase()) ||
+                activeTableIds.has(t.name.toLowerCase()) ||
+                activeTableIds.has(strippedId.toLowerCase()) ||
+                activeTableIds.has(numStr.toLowerCase()) ||
+                activeTableIds.has(`table ${numStr}`);
 
-                const targetStatus: Table['status'] = hasActiveOrder
-                    ? 'busy'
-                    : (t.status === 'reserved' ? 'reserved' : 'available');
+            const targetStatus: Table['status'] = hasActiveOrder
+                ? 'busy'
+                : (t.status === 'reserved' ? 'reserved' : 'available');
 
-                if (t.status !== targetStatus) {
-                    changed = true;
-                    return { ...t, status: targetStatus as 'available' | 'busy' | 'reserved' };
-                }
-                return t;
-            });
-
-            if (changed) {
-                setTables(updatedTables, tenantId || undefined);
-                setFloorTables(updatedTables);
-                syncTablesToServer(updatedTables).catch(() => {
-                    // keep UI responsive even if background sync fails
-                });
+            if (t.status !== targetStatus) {
+                changed = true;
+                return { ...t, status: targetStatus as 'available' | 'busy' | 'reserved' };
             }
+            return t;
         });
-    }, [orders, tenantId, syncTablesToServer]);
+
+        if (changed) {
+            setFloorTables(updatedTables);
+            import('@/data/sharedData').then(({ setTables }) => {
+                setTables(updatedTables, tenantId || undefined);
+            });
+            syncTablesToServer(updatedTables).catch(() => {
+                // keep UI responsive even if background sync fails
+            });
+        }
+    }, [orders, floorTables, tenantId, syncTablesToServer]);
 
     const handleStatusChange = async (orderId: string, status: DashboardOrder['status']) => {
         if (!tenantId || !contextDb) return;
@@ -1062,7 +1147,7 @@ export default function LiveOrdersPage() {
                                     <div className="pt-2.5 border-t border-slate-200/60">
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-xs font-medium text-slate-600">Total</span>
-                                            <span className="text-lg font-bold text-slate-900">${total.toFixed(2)}</span>
+                                            <span className="text-lg font-bold text-slate-900">{formatINR(total)}</span>
                                         </div>
                                         <div className="flex gap-2">
                                             {order.status === 'new' && <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={() => handleStatusChange(order.id, 'preparing')} className="flex-1 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium text-xs shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all">Start Preparing</motion.button>}
@@ -1098,7 +1183,7 @@ export default function LiveOrdersPage() {
                                         <p className="text-xs text-slate-500 mb-2">{order.items.length} item(s)</p>
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-xs text-slate-600">Total</span>
-                                            <span className="text-sm font-bold text-slate-900">${total.toFixed(2)}</span>
+                                            <span className="text-sm font-bold text-slate-900">{formatINR(total)}</span>
                                         </div>
                                         <motion.button
                                             whileHover={{ scale: 1.01 }}
@@ -1142,7 +1227,7 @@ export default function LiveOrdersPage() {
                                                     <h4 className="font-semibold text-slate-900 text-sm mb-0.5 truncate group-hover:text-blue-600 transition-colors">{item.name}</h4>
                                                     <p className="text-xs text-slate-500 mb-2 line-clamp-1">{item.description}</p>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-sm font-semibold text-slate-900">${item.price.toFixed(2)}</span>
+                                                        <span className="text-sm font-semibold text-slate-900">{formatINR(item.price)}</span>
                                                         <span className="text-xs px-2 py-0.5 bg-slate-200 group-hover:bg-blue-100 text-slate-600 group-hover:text-blue-600 rounded-md transition-colors">{item.category}</span>
                                                     </div>
                                                 </div>
