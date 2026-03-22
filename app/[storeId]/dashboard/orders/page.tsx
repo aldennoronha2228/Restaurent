@@ -229,6 +229,11 @@ function LiveOrdersFloor3D({
                 enablePan
                 enableZoom
                 enableRotate
+                enableDamping
+                dampingFactor={0.08}
+                rotateSpeed={0.75}
+                panSpeed={0.7}
+                zoomSpeed={0.85}
                 target={[0, 0.35, 0]}
                 minDistance={5.2}
                 maxDistance={22}
@@ -250,6 +255,7 @@ export default function LiveOrdersPage() {
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [floorViewMode, setFloorViewMode] = useState<'2d' | '3d'>('2d');
+    const [isMobileViewport, setIsMobileViewport] = useState(false);
     const [useServerFallback, setUseServerFallback] = useState(true);
     const updateQueue = useRef<Record<string, Promise<void>>>({});
 
@@ -337,6 +343,16 @@ export default function LiveOrdersPage() {
             setFloorTables(getDefaultTables());
         });
     }, [tenantId, loadTablesViaServer]);
+
+    useEffect(() => {
+        const updateViewport = () => {
+            setIsMobileViewport(window.innerWidth < 768);
+        };
+
+        updateViewport();
+        window.addEventListener('resize', updateViewport);
+        return () => window.removeEventListener('resize', updateViewport);
+    }, []);
 
     useEffect(() => {
         if (!tenantId || !contextDb) return;
@@ -790,7 +806,7 @@ export default function LiveOrdersPage() {
                                     <button
                                         onClick={() => setFloorViewMode('2d')}
                                         className={cn(
-                                            'px-2.5 py-1 text-xs rounded-md transition-colors',
+                                            'px-3 py-1.5 text-xs md:px-2.5 md:py-1 rounded-md transition-colors min-w-[46px] min-h-[34px] md:min-h-0',
                                             floorViewMode === '2d' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                                         )}
                                     >
@@ -799,7 +815,7 @@ export default function LiveOrdersPage() {
                                     <button
                                         onClick={() => setFloorViewMode('3d')}
                                         className={cn(
-                                            'px-2.5 py-1 text-xs rounded-md transition-colors',
+                                            'px-3 py-1.5 text-xs md:px-2.5 md:py-1 rounded-md transition-colors min-w-[46px] min-h-[34px] md:min-h-0',
                                             floorViewMode === '3d' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                                         )}
                                     >
@@ -816,6 +832,22 @@ export default function LiveOrdersPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {isMobileViewport && (
+                            <div className="mb-3">
+                                <button
+                                    onClick={() => setFloorViewMode((prev) => (prev === '2d' ? '3d' : '2d'))}
+                                    className={cn(
+                                        'w-full h-10 rounded-xl text-xs font-semibold border transition-colors',
+                                        floorViewMode === '3d'
+                                            ? 'bg-slate-900 text-white border-slate-900'
+                                            : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                    )}
+                                >
+                                    {floorViewMode === '3d' ? 'Switch to 2D Map' : 'Open 3D Floor View'}
+                                </button>
+                            </div>
+                        )}
                         <div className="rounded-2xl border border-white/30 overflow-x-auto overflow-y-visible">
                             {floorViewMode === '2d' ? (
                                 <div
@@ -900,6 +932,12 @@ export default function LiveOrdersPage() {
                                         selectedTableId={selectedTableId}
                                         onSelectTable={setSelectedTableId}
                                     />
+
+                                    {isMobileViewport && (
+                                        <div className="absolute left-3 top-3 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-[10px] text-slate-600 shadow-sm z-20">
+                                            Drag to rotate • Pinch to zoom
+                                        </div>
+                                    )}
 
                                     {selectedTableId && (() => {
                                         const table = floorTables.find((t) => t.id === selectedTableId);

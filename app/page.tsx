@@ -2,8 +2,8 @@
 import { useEffect } from 'react';
 
 const NUM_FRAMES = 48;
-const MAX_RENDER_PIXELS_DESKTOP = 3600000;
-const MAX_RENDER_PIXELS_MOBILE = 2200000;
+const MAX_RENDER_PIXELS_DESKTOP = 3800000;
+const MAX_RENDER_PIXELS_MOBILE = 4200000;
 
 export default function RootPage() {
   useEffect(() => {
@@ -79,11 +79,16 @@ export default function RootPage() {
         if (!canvas) return;
         const viewportW = window.innerWidth;
         const viewportH = window.innerHeight;
-        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        const isMobileViewport = viewportW < 768;
+        const deviceMemory = Number((navigator as any).deviceMemory || 4);
+        const dprCap = isMobileViewport ? (deviceMemory >= 4 ? 2 : 1.8) : 1.5;
+        const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
         const viewportPixels = viewportW * viewportH * dpr * dpr;
 
-        // Cap render resolution to keep scroll smooth on most hardware.
-        const maxPixels = viewportW >= 1024 ? MAX_RENDER_PIXELS_DESKTOP : MAX_RENDER_PIXELS_MOBILE;
+        // Keep mobile sharper while still capping draw cost for smooth playback.
+        const maxPixels = isMobileViewport
+          ? (deviceMemory >= 4 ? MAX_RENDER_PIXELS_MOBILE : 3200000)
+          : MAX_RENDER_PIXELS_DESKTOP;
         const targetPixels = Math.min(viewportPixels, maxPixels);
         const renderScale = Math.sqrt(targetPixels / (viewportW * viewportH));
 
@@ -220,12 +225,14 @@ export default function RootPage() {
         #bt,#bb{position:fixed;left:0;right:0;height:52px;background:#000;z-index:2}
         #bt{top:0}#bb{bottom:0}
         #spacer{height:600vh}
-        #nav{position:fixed;top:0;left:0;right:0;height:52px;z-index:5;display:flex;align-items:center;padding:0 40px}
+        #nav{position:fixed;top:10px;left:0;right:0;z-index:8;display:flex;justify-content:center;padding:0 16px}
+        .nav-shell{width:min(980px,100%);height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 18px;border-radius:16px;border:1px solid rgba(147,197,253,.28);background:linear-gradient(180deg,rgba(2,6,23,.82),rgba(2,6,23,.62));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 10px 30px rgba(2,6,23,.55),inset 0 1px 0 rgba(255,255,255,.06)}
+        .brand-left{display:flex;align-items:center;gap:14px;min-width:0}
         .logo{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:600;letter-spacing:.22em;pointer-events:none}
         .logo b{color:var(--neon)}
         .tagline{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--mint);opacity:.7;pointer-events:none}
-        .nav-right{position:fixed;top:8px;right:40px;z-index:6;display:flex;align-items:center}
-        .btn-start{padding:8px 20px;background:var(--neon);color:#000;border:none;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:500;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;text-decoration:none;box-shadow:0 2px 14px rgba(57,255,110,.3);transition:all .25s}
+        .nav-right{display:flex;align-items:center}
+        .btn-start{padding:12px 26px;background:var(--neon);color:#000;border:none;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:.74rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;text-decoration:none;box-shadow:0 8px 20px rgba(37,99,235,.35);transition:all .25s}
         .btn-start:hover{background:#fff;box-shadow:0 2px 24px rgba(57,255,110,.5)}
         #hint{position:fixed;bottom:66px;left:50%;transform:translateX(-50%);z-index:5;text-align:center;transition:opacity .5s;pointer-events:none}
         #hint p{font-size:.55rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:6px}
@@ -357,9 +364,9 @@ export default function RootPage() {
         /* Premium matte theme overrides */
         body{background:#000;background-image:none}
         body::before,body::after{display:none}
-        #stage canvas,#bt,#bb,#nav,#sec-stats,#sec-bento,#sec-advantage,#sec-cta,#footer{background:#000}
+        #stage canvas,#bt,#bb,#sec-stats,#sec-bento,#sec-advantage,#sec-cta,#footer{background:#000}
         #vig{background:radial-gradient(ellipse at 50% 42%,transparent 42%,rgba(0,0,0,.36) 100%)}
-        #nav{border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:none}
+        #nav{border-bottom:none}
         .logo{color:#f3f4f6}
         .logo b{color:#93c5fd}
         .tagline{color:#cbd5e1;opacity:.72}
@@ -385,8 +392,8 @@ export default function RootPage() {
         .btng:hover{border-color:rgba(226,232,240,.55);color:#f3f4f6}
         #sec-stats,#footer{border-top:1px solid rgba(255,255,255,.08)}
         .ma,.aftd,.td.g{background:#9ca3af;box-shadow:none}
-        @media(max-width:768px){#phone{display:none!important}#bt,#bb{height:44px}#nav{height:44px;padding:0 22px}.nav-right{top:6px;right:22px}.logo{font-size:1.1rem}.tagline{display:none}.card{left:16px!important;right:16px!important;bottom:58px!important;top:auto!important;transform:none!important;max-width:none!important;padding:20px 22px}.bgrid{grid-template-columns:1fr}.sec-in{padding:56px 24px}.acard,.ctacard{padding:36px 28px}.fin{flex-direction:column;text-align:center}}
-        @media(max-width:480px){#bt,#bb{height:40px}#nav{height:40px;padding:0 16px}.nav-right{top:4px;right:16px}.logo{font-size:1rem}.card{left:12px!important;right:12px!important;bottom:50px!important;padding:18px 20px}.sec-in{padding:40px 16px}.acard,.ctacard{padding:28px 20px}.atitle{font-size:1.6rem}.ctatitle{font-size:1.7rem}.ctabtns{flex-direction:column;align-items:center}.btnp,.btng{width:100%;max-width:280px}}
+        @media(max-width:768px){#phone{display:none!important}#bt,#bb{height:44px}#nav{top:8px;padding:0 12px}.nav-shell{height:50px;padding:0 8px 0 12px;border-radius:14px}.logo{font-size:1.1rem;letter-spacing:.18em}.tagline{display:none}.btn-start{padding:10px 16px;font-size:.68rem;border-radius:10px}.card{left:16px!important;right:16px!important;bottom:58px!important;top:auto!important;transform:none!important;max-width:none!important;padding:20px 22px}.bgrid{grid-template-columns:1fr}.sec-in{padding:56px 24px}.acard,.ctacard{padding:36px 28px}.fin{flex-direction:column;text-align:center}}
+        @media(max-width:480px){#bt,#bb{height:40px}#nav{top:8px;padding:0 10px}.nav-shell{height:48px;padding:0 8px 0 10px}.logo{font-size:.98rem;letter-spacing:.16em}.btn-start{padding:9px 14px;font-size:.65rem}.card{left:12px!important;right:12px!important;bottom:50px!important;padding:18px 20px}.sec-in{padding:40px 16px}.acard,.ctacard{padding:28px 20px}.atitle{font-size:1.6rem}.ctatitle{font-size:1.7rem}.ctabtns{flex-direction:column;align-items:center}.btnp,.btng{width:100%;max-width:280px}}
       `}</style>
 
       <div id="loader">
@@ -405,12 +412,14 @@ export default function RootPage() {
       <div id="spacer"></div>
 
       <div id="nav">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div className="logo">NEX<b>RESTO</b></div>
-          <div className="tagline">Premium QR Ordering</div>
-        </div>
-        <div className="nav-right">
-          <a href="/login" className="btn-start">Get Started</a>
+        <div className="nav-shell">
+          <div className="brand-left">
+            <div className="logo">NEX<b>RESTO</b></div>
+            <div className="tagline">Premium QR Ordering</div>
+          </div>
+          <div className="nav-right">
+            <a href="/login" className="btn-start">Get Started</a>
+          </div>
         </div>
       </div>
 

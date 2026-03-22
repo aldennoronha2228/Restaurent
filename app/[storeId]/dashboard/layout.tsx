@@ -478,10 +478,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.push('/login');
     };
 
-    const handleBackToLogin = async () => {
-        await handleSignOut();
-    };
-
     if (loading || superAdminLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
@@ -850,16 +846,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             </div>
                                         </button>
 
-                                        <button
-                                            onClick={() => { setMobileMenuOpen(false); handleBackToLogin(); }}
-                                            className="w-full text-left"
-                                        >
-                                            <div className="flex items-center gap-3 px-3 py-2.5 rounded-full transition-all duration-200 premium-sidebar-text hover:bg-white/5 hover:text-white">
-                                                <LogIn className="w-5 h-5 flex-shrink-0" />
-                                                <span className="text-sm font-medium flex-1">Back to Login</span>
-                                            </div>
-                                        </button>
-
                                     </nav>
                                 </div>
                             </motion.div>
@@ -915,13 +901,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors" title="Open settings">
                                     <Menu className="w-5 h-5 text-slate-600" />
                                 </button>
-                                <button
-                                    onClick={handleSignOut}
-                                    className="md:hidden p-2 hover:bg-rose-50 rounded-lg transition-colors"
-                                    title="Sign out"
-                                >
-                                    <LogOut className="w-5 h-5 text-rose-600" />
-                                </button>
                                 <div className="relative">
                                     <motion.button
                                         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
@@ -946,10 +925,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                                 <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-rose-600 hover:bg-rose-50 transition-colors">
                                                     <LogOut className="w-4 h-4" />
                                                     Sign Out
-                                                </button>
-                                                <button onClick={handleBackToLogin} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-t border-slate-100">
-                                                    <LogIn className="w-4 h-4" />
-                                                    Back to Login
                                                 </button>
                                             </motion.div>
                                         )}
