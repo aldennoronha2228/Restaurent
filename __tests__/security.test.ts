@@ -36,7 +36,7 @@ describe('validateOrderPayload', () => {
     const validOrder = {
         tableId: 'T-01',
         restaurantId: 'rest001',
-        items: [{ id: '1', name: 'Pasta', quantity: 2, price: 15 }],
+        items: [{ id: 'item_001', name: 'Pasta', quantity: 2, price: 15 }],
         total: 35,   // 2 * 15 + 5 service fee
     };
 
@@ -62,21 +62,21 @@ describe('validateOrderPayload', () => {
     });
 
     it('rejects more than 50 items', () => {
-        const items = Array.from({ length: 51 }, (_, i) => ({ id: String(i), name: `Item ${i}`, quantity: 1, price: 10 }));
+        const items = Array.from({ length: 51 }, (_, i) => ({ id: `item_${i}`, name: `Item ${i}`, quantity: 1, price: 10 }));
         const r = validateOrderPayload({ ...validOrder, items, total: 515 });
         expect(r.ok).toBe(false);
         expect(r.error).toMatch(/50/);
     });
 
     it('rejects item quantity > 99', () => {
-        const r = validateOrderPayload({ ...validOrder, items: [{ id: '1', name: 'Pasta', quantity: 100, price: 15 }], total: 1505 });
+        const r = validateOrderPayload({ ...validOrder, items: [{ id: 'item_001', name: 'Pasta', quantity: 100, price: 15 }], total: 1505 });
         expect(r.ok).toBe(false);
         expect(r.error).toMatch(/quantity/i);
     });
 
     it('rejects non-positive item price', () => {
         // price -5 is not a positive number — should fail
-        const r = validateOrderPayload({ ...validOrder, items: [{ id: '1', name: 'Pasta', quantity: 1, price: -5 }], total: 35 });
+        const r = validateOrderPayload({ ...validOrder, items: [{ id: 'item_001', name: 'Pasta', quantity: 1, price: -5 }], total: 35 });
         expect(r.ok).toBe(false);
     });
 
@@ -91,8 +91,25 @@ describe('validateOrderPayload', () => {
     it('rejects total exceeding items + service buffer (manipulation)', () => {
         // Items: 1 x Pasta @ $15 → computedTotal = 15, buffer = 115
         // Client sends 200 — way over the service fee buffer
-        const rHigh = validateOrderPayload({ ...validOrder, items: [{ id: '1', name: 'Pasta', quantity: 1, price: 15 }], total: 200 });
+        const rHigh = validateOrderPayload({ ...validOrder, items: [{ id: 'item_001', name: 'Pasta', quantity: 1, price: 15 }], total: 200 });
         expect(rHigh.ok).toBe(false);
+    });
+
+    it('rejects invalid item ID format', () => {
+        const r = validateOrderPayload({ ...validOrder, items: [{ id: 'item;DROP', name: 'Pasta', quantity: 1, price: 15 }], total: 20 });
+        expect(r.ok).toBe(false);
+        expect(r.error).toMatch(/item id/i);
+    });
+
+    it('sanitizes order items and drops unknown fields', () => {
+        const r = validateOrderPayload({
+            ...validOrder,
+            items: [{ id: '  item_001  ', name: '  Pasta  ', quantity: 2, price: 15, note: 'x' }],
+            total: 35,
+        });
+
+        expect(r.ok).toBe(true);
+        expect(r.data?.items[0]).toEqual({ id: 'item_001', name: 'Pasta', quantity: 2, price: 15 });
     });
 
     it('rejects non-object payload', () => {
@@ -132,7 +149,7 @@ describe('validateMenuItemPayload', () => {
     });
 
     it('rejects invalid type value', () => {
-        const r = validateMenuItemPayload({ ...validItem, type: 'omnivore' as any });
+        const r = validateMenuItemPayload({ ...validItem, type: 'omnivore' as unknown as 'veg' | 'non-veg' });
         expect(r.ok).toBe(false);
     });
 

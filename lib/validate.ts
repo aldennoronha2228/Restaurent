@@ -53,6 +53,39 @@ export interface ValidOrderPayload {
     restaurantId: string;
 }
 
+interface ValidOrderItem {
+    id: string;
+    name: string;
+    quantity: number;
+    price: number;
+}
+
+function isOrderItemId(v: unknown): v is string {
+    return typeof v === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(v);
+}
+
+function parseOrderItem(rawItem: unknown): ValidationResult<ValidOrderItem> {
+    if (!rawItem || typeof rawItem !== 'object') return { ok: false, error: 'Invalid item shape' };
+
+    const item = rawItem as Record<string, unknown>;
+    const itemId = typeof item.id === 'string' ? item.id.trim() : item.id;
+    if (!isOrderItemId(itemId)) return { ok: false, error: 'Item ID invalid' };
+    if (!isNonEmptyString(item.name, 200)) return { ok: false, error: `Item name invalid: ${String(item.name).slice(0, 50)}` };
+    if (!isPositiveNumber(item.quantity) || !Number.isInteger(item.quantity)) return { ok: false, error: 'Item quantity must be a positive integer' };
+    if (item.quantity > 99) return { ok: false, error: 'Item quantity must not exceed 99' };
+    if (!isPositiveNumber(item.price, 100_000)) return { ok: false, error: 'Item price invalid' };
+
+    return {
+        ok: true,
+        data: {
+            id: itemId,
+            name: item.name.trim(),
+            quantity: item.quantity,
+            price: item.price,
+        },
+    };
+}
+
 export function validateOrderPayload(raw: unknown): ValidationResult<ValidOrderPayload> {
     if (!raw || typeof raw !== 'object') return { ok: false, error: 'Payload must be an object' };
     const p = raw as Record<string, unknown>;
@@ -63,16 +96,15 @@ export function validateOrderPayload(raw: unknown): ValidationResult<ValidOrderP
     if (!Array.isArray(p.items) || p.items.length === 0) return { ok: false, error: 'Order must contain at least one item' };
     if (p.items.length > 50) return { ok: false, error: 'Order cannot exceed 50 items' };
 
+    const sanitizedItems: ValidOrderItem[] = [];
+
     for (const item of p.items) {
-        if (!item || typeof item !== 'object') return { ok: false, error: 'Invalid item shape' };
-        const i = item as Record<string, unknown>;
-        if (!isNonEmptyString(i.name, 200)) return { ok: false, error: `Item name invalid: ${String(i.name).slice(0, 50)}` };
-        if (!isPositiveNumber(i.quantity) || !Number.isInteger(i.quantity)) return { ok: false, error: 'Item quantity must be a positive integer' };
-        if ((i.quantity as number) > 99) return { ok: false, error: 'Item quantity must not exceed 99' };
-        if (!isPositiveNumber(i.price, 100_000)) return { ok: false, error: 'Item price invalid' };
+        const parsedItem = parseOrderItem(item);
+        if (!parsedItem.ok || !parsedItem.data) return { ok: false, error: parsedItem.error };
+        sanitizedItems.push(parsedItem.data);
     }
 
-    const computedTotal = (p.items as any[]).reduce((sum: number, i: any) => sum + i.price * i.quantity, 0);
+    const computedTotal = sanitizedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const serviceFeeBound = computedTotal + 100; // allow up to ₹100 service fee
     if (!isPositiveNumber(p.total, 1_000_000) || (p.total as number) > serviceFeeBound) {
         return { ok: false, error: 'Total amount does not match items' };
@@ -83,7 +115,7 @@ export function validateOrderPayload(raw: unknown): ValidationResult<ValidOrderP
         data: {
             tableId: (p.tableId as string).trim(),
             restaurantId: (p.restaurantId as string).trim(),
-            items: p.items as any,
+            items: sanitizedItems,
             total: p.total as number,
         },
     };
