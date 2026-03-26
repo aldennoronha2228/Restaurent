@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 import { Eye, EyeOff, Lock, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import NexRestoLogo from '@/components/ui/NexRestoLogo';
 import { auth } from '@/lib/firebase';
-import { verifyPasswordResetCode, confirmPasswordReset } from 'firebase/auth';
+import { verifyPasswordResetCode, confirmPasswordReset, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { toast } from 'sonner';
 
 function PasswordStrength({ password }: { password: string }) {
@@ -146,6 +146,25 @@ function SetupPasswordContent() {
 
         try {
             await confirmPasswordReset(auth, oobCode, password);
+
+            // Clear first-login enforcement claim when reset is completed via email link.
+            // This keeps routing scoped to the affected account and avoids stale redirects.
+            if (userEmail) {
+                try {
+                    const credential = await signInWithEmailAndPassword(auth, userEmail, password);
+                    const idToken = await credential.user.getIdToken(true);
+                    await fetch('/api/auth/complete-password-change', {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bearer ${idToken}`,
+                        },
+                    });
+                } catch {
+                    // Non-blocking: password reset has already succeeded.
+                } finally {
+                    await signOut(auth).catch(() => { });
+                }
+            }
 
             setSuccess(true);
             toast.success('Password set successfully!');

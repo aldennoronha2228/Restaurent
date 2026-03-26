@@ -31,7 +31,51 @@ export default function ChangePasswordPage() {
             if (tenantId) {
                 router.replace(`/${tenantId}/dashboard/orders`);
             } else {
-                router.replace('/login');
+                const user = tenantAuth.currentUser;
+                if (!user) {
+                    router.replace('/login');
+                    return;
+                }
+
+                (async () => {
+                    try {
+                        const tokenResult = await user.getIdTokenResult(true).catch(() => null);
+                        const claimRole = tokenResult?.claims?.role as string | undefined;
+                        const claimTenant = (tokenResult?.claims?.tenant_id || tokenResult?.claims?.restaurant_id) as string | undefined;
+
+                        if (claimRole === 'super_admin') {
+                            router.replace('/super-admin');
+                            return;
+                        }
+
+                        if (claimRole && claimTenant) {
+                            router.replace(`/${claimTenant}/dashboard/orders`);
+                            return;
+                        }
+
+                        const idToken = await user.getIdToken();
+                        const profileRes = await fetch('/api/auth/profile', {
+                            headers: { Authorization: `Bearer ${idToken}` },
+                            cache: 'no-store',
+                        });
+                        const profilePayload = await profileRes.json().catch(() => ({}));
+                        const profile = profilePayload?.profile;
+
+                        if (profile?.role === 'super_admin') {
+                            router.replace('/super-admin');
+                            return;
+                        }
+
+                        if (profile?.role && profile?.tenant_id) {
+                            router.replace(`/${profile.tenant_id}/dashboard/orders`);
+                            return;
+                        }
+
+                        router.replace('/login');
+                    } catch {
+                        router.replace('/login');
+                    }
+                })();
             }
         }
     }, [loading, session, mustChangePassword, tenantId, router]);
