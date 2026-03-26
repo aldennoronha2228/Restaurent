@@ -125,7 +125,7 @@ export default function ActivityLogs() {
         return (
             <div className="flex items-center justify-center h-[60vh]">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-400 rounded-full animate-spin"></div>
                     <p className="text-slate-400">Loading activity logs...</p>
                 </div>
             </div>
@@ -133,11 +133,11 @@ export default function ActivityLogs() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 isolate text-slate-100">
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Activity Logs</h1>
+                    <h1 className="text-3xl font-semibold tracking-tight text-white">Activity Logs</h1>
                     <p className="text-slate-400 mt-1">Real-time platform events and activities</p>
                 </div>
 
@@ -148,8 +148,8 @@ export default function ActivityLogs() {
                         className={cn(
                             "flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors",
                             autoRefresh
-                                ? "bg-green-500/20 border-green-500/30 text-green-400"
-                                : "bg-slate-700 border-slate-600 text-slate-400"
+                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                                : "bg-white/5 border-white/10 text-slate-400"
                         )}
                     >
                         <div className={cn(
@@ -165,8 +165,8 @@ export default function ActivityLogs() {
                         className={cn(
                             "flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors",
                             eventFilter
-                                ? "bg-purple-500/20 border-purple-500/30 text-purple-400"
-                                : "bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600"
+                                ? "bg-violet-500/20 border-violet-500/30 text-violet-200"
+                                : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
                         )}
                     >
                         <Filter className="w-4 h-4" />
@@ -179,9 +179,9 @@ export default function ActivityLogs() {
                         whileTap={{ scale: 0.95 }}
                         onClick={handleRefresh}
                         disabled={refreshing}
-                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:text-violet-200 hover:border-violet-400/40 hover:bg-violet-500/10 transition-all disabled:opacity-50"
                     >
-                        <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+                        <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} strokeWidth={1.5} />
                         Refresh
                     </motion.button>
                 </div>
@@ -196,7 +196,7 @@ export default function ActivityLogs() {
                         exit={{ opacity: 0, height: 0 }}
                         className="overflow-hidden"
                     >
-                        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+                        <div className="rounded-2xl border border-white/10 bg-[#0b0b0c]/85 p-4">
                             <p className="text-slate-400 text-sm mb-3">Filter by event type:</p>
                             <div className="flex flex-wrap gap-2">
                                 {EVENT_TYPES.map((type) => (
@@ -206,8 +206,8 @@ export default function ActivityLogs() {
                                         className={cn(
                                             "px-3 py-1.5 rounded-lg text-sm transition-colors",
                                             eventFilter === type.value
-                                                ? "bg-purple-600 text-white"
-                                                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                                                ? "bg-violet-500 text-white"
+                                                : "bg-white/10 text-slate-300 hover:bg-white/15"
                                         )}
                                     >
                                         {type.label}
@@ -220,7 +220,7 @@ export default function ActivityLogs() {
             </AnimatePresence>
 
             {/* Logs List */}
-            <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+            <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 overflow-hidden">
                 {logs.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                         <ScrollText className="w-12 h-12 mb-4 opacity-50" />
@@ -235,7 +235,7 @@ export default function ActivityLogs() {
                         )}
                     </div>
                 ) : (
-                    <div className="divide-y divide-slate-700/50">
+                    <div className="divide-y divide-white/6">
                         {logs.map((log, index) => {
                             const SeverityIcon = severityIcons[log.severity];
                             const colors = severityColors[log.severity];
@@ -247,7 +247,7 @@ export default function ActivityLogs() {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: index * 0.02 }}
-                                    className="hover:bg-slate-700/30 transition-colors"
+                                    className="hover:bg-white/[0.05] transition-colors"
                                 >
                                     <button
                                         onClick={() => setExpandedLog(isExpanded ? null : log.id)}
@@ -301,7 +301,7 @@ export default function ActivityLogs() {
                                                 className="overflow-hidden"
                                             >
                                                 <div className="px-4 pb-4 pl-4 sm:pl-[68px]">
-                                                    <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                                                    <div className="bg-white/[0.04] rounded-xl border border-white/8 p-4 space-y-3">
                                                         <div className="flex items-center gap-4 text-sm">
                                                             <span className="text-slate-400">
                                                                 <Clock className="w-3 h-3 inline mr-1" />
@@ -324,7 +324,7 @@ export default function ActivityLogs() {
                                                         {Object.keys(log.metadata).length > 0 && (
                                                             <div>
                                                                 <p className="text-slate-400 text-xs mb-2">Metadata:</p>
-                                                                <pre className="text-xs text-slate-300 bg-slate-950 rounded p-3 overflow-x-auto">
+                                                                <pre className="text-xs text-slate-300 bg-black/50 border border-white/10 rounded p-3 overflow-x-auto">
                                                                     {JSON.stringify(log.metadata, null, 2)}
                                                                 </pre>
                                                             </div>

@@ -7,12 +7,15 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { Geist } from 'next/font/google';
 import {
-    DollarSign, Building2, ShoppingBag, UserPlus,
-    TrendingUp, TrendingDown, RefreshCw, X, Check
+    Building2,
+    TrendingUp, RefreshCw, X, Check
 } from 'lucide-react';
 import { getPlatformStats, getGlobalLogs, type PlatformStats, type GlobalLog } from '@/lib/firebase-super-admin-actions';
 import { cn } from '@/lib/utils';
+
+const geist = Geist({ subsets: ['latin'] });
 
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -38,11 +41,35 @@ const formatTime = (dateString: string) => {
 };
 
 const severityColors = {
-    info: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    warning: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    error: 'bg-red-500/20 text-red-400 border-red-500/30',
-    success: 'bg-green-500/20 text-green-400 border-green-500/30',
+    info: 'bg-cyan-400',
+    warning: 'bg-amber-400',
+    error: 'bg-rose-400',
+    success: 'bg-emerald-400',
 };
+
+function MetricSparkline({ points, strokeClass }: { points: number[]; strokeClass: string }) {
+    if (!points.length) return null;
+
+    const max = Math.max(...points);
+    const min = Math.min(...points);
+    const range = max - min || 1;
+    const width = 260;
+    const height = 70;
+
+    const d = points
+        .map((point, index) => {
+            const x = (index / Math.max(1, points.length - 1)) * width;
+            const y = height - ((point - min) / range) * height;
+            return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+        })
+        .join(' ');
+
+    return (
+        <svg viewBox={`0 0 ${width} ${height}`} className="absolute -bottom-2 left-0 right-0 h-20 w-full opacity-45">
+            <path d={d} fill="none" className={strokeClass} strokeWidth={2} strokeLinecap="round" />
+        </svg>
+    );
+}
 
 export default function SuperAdminOverview() {
     const [stats, setStats] = useState<PlatformStats | null>(null);
@@ -122,9 +149,9 @@ export default function SuperAdminOverview() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-[60vh]">
+            <div className={cn("flex items-center justify-center h-[60vh]", geist.className)}>
                 <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-400 rounded-full animate-spin"></div>
                     <p className="text-slate-400">Loading platform data...</p>
                 </div>
             </div>
@@ -135,119 +162,118 @@ export default function SuperAdminOverview() {
         {
             label: 'Monthly Revenue (MRR)',
             value: formatCurrency(stats?.total_revenue || 0),
-            icon: DollarSign,
-            color: 'from-green-500 to-emerald-600',
-            bgColor: 'bg-green-500/10',
+            color: 'from-emerald-400/60 to-emerald-500/10',
+            stroke: 'stroke-emerald-300',
             change: '+12%',
             changeUp: true,
+            points: [72, 70, 73, 75, 81, 85, 89, 91, 94, 97],
+            size: 'lg',
         },
         {
             label: 'Total Restaurants',
             value: stats?.total_restaurants || 0,
-            icon: Building2,
-            color: 'from-blue-500 to-cyan-600',
-            bgColor: 'bg-blue-500/10',
+            color: 'from-cyan-400/60 to-cyan-500/10',
+            stroke: 'stroke-cyan-300',
             change: '+3',
             changeUp: true,
+            points: [24, 26, 27, 30, 31, 32, 35, 36, 37, 39],
+            size: 'md',
         },
         {
             label: 'Active Orders',
             value: stats?.active_orders || 0,
-            icon: ShoppingBag,
-            color: 'from-orange-500 to-red-600',
-            bgColor: 'bg-orange-500/10',
+            color: 'from-fuchsia-400/60 to-fuchsia-600/10',
+            stroke: 'stroke-fuchsia-300',
             change: 'Live',
             changeUp: true,
+            points: [18, 22, 15, 28, 24, 32, 27, 35, 29, 37],
+            size: 'md',
         },
         {
             label: 'New Signups (30d)',
             value: stats?.new_signups_30d || 0,
-            icon: UserPlus,
-            color: 'from-purple-500 to-pink-600',
-            bgColor: 'bg-purple-500/10',
+            color: 'from-violet-400/60 to-violet-600/10',
+            stroke: 'stroke-violet-300',
             change: '+8%',
             changeUp: true,
+            points: [9, 10, 11, 10, 13, 14, 15, 17, 18, 19],
+            size: 'md',
         },
     ];
 
     return (
-        <div className="space-y-8">
+        <div className={cn("space-y-8 text-slate-100 isolate", geist.className)}>
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Platform Overview</h1>
-                    <p className="text-slate-400 mt-1">Monitor your entire NexResto network</p>
+                    <h1 className="text-3xl font-semibold tracking-tight text-white">Platform Overview</h1>
+                    <p className="text-slate-400 mt-1">Monitor your entire NexResto command grid</p>
                 </div>
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={handleRefresh}
                     disabled={refreshing}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:text-violet-200 hover:border-violet-400/40 hover:bg-violet-500/10 transition-all disabled:opacity-50"
                 >
-                    <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+                    <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} strokeWidth={1.5} />
                     Refresh
                 </motion.button>
             </div>
 
             {/* Stat Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-4">
                 {statCards.map((stat, index) => (
                     <motion.div
                         key={stat.label}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.1 }}
-                        className="relative overflow-hidden bg-slate-800 rounded-2xl border border-slate-700 p-6"
+                        className={cn(
+                            "relative overflow-hidden rounded-3xl border border-white/8 p-6 bg-[#0b0b0c]/85 shadow-[0_10px_50px_rgba(0,0,0,0.35)]",
+                            stat.size === 'lg' ? 'xl:col-span-6' : 'xl:col-span-2'
+                        )}
                     >
-                        <div className="flex items-start justify-between">
+                        <div className="relative z-10">
                             <div>
-                                <p className="text-slate-400 text-sm">{stat.label}</p>
-                                <p className="text-2xl font-bold text-white mt-1">{stat.value}</p>
+                                <p className="text-slate-400 text-xs uppercase tracking-[0.18em]">{stat.label}</p>
+                                <p className={cn(
+                                    "text-white mt-2 tracking-tight",
+                                    stat.size === 'lg' ? 'text-5xl font-semibold' : 'text-3xl font-semibold'
+                                )}>{stat.value}</p>
                                 <div className="flex items-center gap-1 mt-2">
-                                    {stat.changeUp ? (
-                                        <TrendingUp className="w-4 h-4 text-green-400" />
-                                    ) : (
-                                        <TrendingDown className="w-4 h-4 text-red-400" />
-                                    )}
+                                    <TrendingUp className="w-4 h-4 text-emerald-300" strokeWidth={1.5} />
                                     <span className={cn(
-                                        "text-sm font-medium",
-                                        stat.changeUp ? "text-green-400" : "text-red-400"
+                                        "text-sm font-medium text-emerald-300"
                                     )}>
                                         {stat.change}
                                     </span>
                                 </div>
                             </div>
-                            <div className={cn("p-3 rounded-xl", stat.bgColor)}>
-                                <stat.icon className={cn("w-6 h-6 bg-gradient-to-br bg-clip-text", stat.color)} style={{ color: 'currentColor' }} />
-                            </div>
                         </div>
-                        {/* Gradient accent */}
-                        <div className={cn(
-                            "absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r",
-                            stat.color
-                        )} />
+                        <div className={cn("absolute inset-0 bg-gradient-to-br opacity-45", stat.color)} />
+                        <MetricSparkline points={stat.points} strokeClass={stat.stroke} />
                     </motion.div>
                 ))}
             </div>
 
             {/* Quick Actions & Recent Activity */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 {/* Quick Actions */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 }}
-                    className="bg-slate-800 rounded-2xl border border-slate-700 p-6"
+                    className="lg:col-span-5 rounded-3xl border border-white/8 bg-[#0b0b0c]/85 p-6"
                 >
                     <h2 className="text-lg font-semibold text-white mb-4">Quick Actions</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button
                             onClick={() => window.location.href = '/super-admin/restaurants'}
-                            className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-700 rounded-xl transition-colors text-left"
+                            className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition-colors text-left"
                         >
-                            <div className="p-2 bg-blue-500/20 rounded-lg">
-                                <Building2 className="w-5 h-5 text-blue-400" />
+                            <div className="p-2 bg-cyan-500/15 rounded-lg">
+                                <Building2 className="w-5 h-5 text-cyan-300" strokeWidth={1.5} />
                             </div>
                             <div>
                                 <p className="text-white font-medium">Manage Restaurants</p>
@@ -256,10 +282,10 @@ export default function SuperAdminOverview() {
                         </button>
                         <button
                             onClick={() => window.location.href = '/super-admin/logs'}
-                            className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-700 rounded-xl transition-colors text-left"
+                            className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition-colors text-left"
                         >
-                            <div className="p-2 bg-purple-500/20 rounded-lg">
-                                <RefreshCw className="w-5 h-5 text-purple-400" />
+                            <div className="p-2 bg-violet-500/15 rounded-lg">
+                                <RefreshCw className="w-5 h-5 text-violet-300" strokeWidth={1.5} />
                             </div>
                             <div>
                                 <p className="text-white font-medium">Activity Logs</p>
@@ -274,7 +300,7 @@ export default function SuperAdminOverview() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5 }}
-                    className="bg-slate-800 rounded-2xl border border-slate-700 p-6"
+                    className="lg:col-span-7 rounded-3xl border border-white/8 bg-[#0b0b0c]/85 p-6"
                 >
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-white">Recent Activity</h2>
@@ -295,11 +321,9 @@ export default function SuperAdminOverview() {
                             {recentLogs.map((log) => (
                                 <div
                                     key={log.id}
-                                    className={cn(
-                                        "flex items-start gap-3 p-3 rounded-lg border",
-                                        severityColors[log.severity]
-                                    )}
+                                    className="group flex items-start gap-3 p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] transition-colors"
                                 >
+                                    <span className={cn("mt-1 h-2.5 w-2.5 rounded-full shadow-[0_0_16px_currentColor]", severityColors[log.severity])} />
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-mono opacity-70">{log.event_type}</span>
@@ -324,7 +348,7 @@ export default function SuperAdminOverview() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
-                className="bg-slate-800 rounded-2xl border border-slate-700 p-6"
+                className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 p-6"
             >
                 <h2 className="text-lg font-semibold text-white mb-4">Revenue by Tier</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -335,10 +359,10 @@ export default function SuperAdminOverview() {
                         <button
                             key={item.tier}
                             onClick={() => setSelectedTier(item.key)}
-                            className="relative overflow-hidden bg-slate-700/30 rounded-xl p-4 border border-slate-600/50 text-left hover:bg-slate-700/50 hover:border-slate-500 transition-all cursor-pointer group"
+                            className="relative overflow-hidden bg-white/[0.03] rounded-2xl p-4 border border-white/10 text-left hover:bg-white/[0.08] transition-all cursor-pointer group"
                         >
                             <p className="text-slate-400 text-sm">{item.label}</p>
-                            <p className="text-xl font-bold text-white mt-1">{item.tier}</p>
+                            <p className="text-2xl font-semibold tracking-tight text-white mt-1">{item.tier}</p>
                             <p className="text-xs text-slate-500 mt-2 group-hover:text-slate-400 transition-colors">Click to view features →</p>
                             <div className={cn(
                                 "absolute top-0 right-0 w-16 h-16 rounded-bl-full bg-gradient-to-br opacity-20 group-hover:opacity-30 transition-opacity",
@@ -357,7 +381,7 @@ export default function SuperAdminOverview() {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-slate-800 rounded-2xl border border-slate-700 p-6 max-w-md w-full"
+                        className="bg-[#0c0c0d] rounded-3xl border border-white/10 p-6 max-w-md w-full backdrop-blur-2xl"
                     >
                         <div className="flex items-center justify-between mb-4">
                             <div>

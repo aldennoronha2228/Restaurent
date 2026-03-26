@@ -92,37 +92,37 @@ export default function SuperAdminEmailsPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 isolate text-slate-100">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Email Center</h1>
+                    <h1 className="text-3xl font-semibold tracking-tight text-white">Email Center</h1>
                     <p className="text-slate-400 text-sm mt-1">Track subscription reminder emails and send manually when needed.</p>
                 </div>
                 <button
                     onClick={loadRows}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:text-violet-200 hover:border-violet-400/40 hover:bg-violet-500/10 transition-all"
                 >
-                    <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+                    <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} strokeWidth={1.5} />
                     Refresh
                 </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="bg-slate-800/80 rounded-xl border border-slate-700 px-4 py-3">
-                    <p className="text-slate-400 text-xs">Reminders Enabled</p>
-                    <p className="text-white text-xl font-semibold">{stats.enabled}</p>
+                <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 px-4 py-3">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.18em]">Reminders Enabled</p>
+                    <p className="text-white text-2xl font-semibold tracking-tight">{stats.enabled}</p>
                 </div>
-                <div className="bg-slate-800/80 rounded-xl border border-slate-700 px-4 py-3">
-                    <p className="text-slate-400 text-xs">In Reminder Window</p>
-                    <p className="text-amber-300 text-xl font-semibold">{stats.dueToday}</p>
+                <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 px-4 py-3">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.18em]">In Reminder Window</p>
+                    <p className="text-amber-300 text-2xl font-semibold tracking-tight">{stats.dueToday}</p>
                 </div>
-                <div className="bg-slate-800/80 rounded-xl border border-slate-700 px-4 py-3">
-                    <p className="text-slate-400 text-xs">Sent Today</p>
-                    <p className="text-emerald-300 text-xl font-semibold">{stats.sentToday}</p>
+                <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 px-4 py-3">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.18em]">Sent Today</p>
+                    <p className="text-emerald-300 text-2xl font-semibold tracking-tight">{stats.sentToday}</p>
                 </div>
-                <div className="bg-slate-800/80 rounded-xl border border-slate-700 px-4 py-3">
-                    <p className="text-slate-400 text-xs">With Last Error</p>
-                    <p className="text-rose-300 text-xl font-semibold">{stats.failed}</p>
+                <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 px-4 py-3">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.18em]">With Last Error</p>
+                    <p className="text-rose-300 text-2xl font-semibold tracking-tight">{stats.failed}</p>
                 </div>
             </div>
 
@@ -145,7 +145,7 @@ export default function SuperAdminEmailsPage() {
                 )}
             </AnimatePresence>
 
-            <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+            <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 overflow-hidden">
                 {loading ? (
                     <div className="h-56 flex items-center justify-center text-slate-400">Loading email tracker...</div>
                 ) : rows.length === 0 ? (
@@ -162,7 +162,7 @@ export default function SuperAdminEmailsPage() {
                                 const canManualSend = hasEndDate && row.reminders_enabled && !row.account_temporarily_disabled && !alreadySentToday;
 
                                 return (
-                                    <div key={row.id} className="rounded-xl border border-slate-700 bg-slate-900/50 p-3 space-y-3">
+                                    <div key={row.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3 space-y-3">
                                         <div>
                                             <p className="text-white font-medium">{row.name}</p>
                                             <p className="text-xs text-slate-500 break-all">{row.id}</p>
@@ -245,15 +245,15 @@ export default function SuperAdminEmailsPage() {
                         <div className="hidden md:block overflow-x-auto">
                         <table className="w-full table-fixed min-w-[1120px]">
                             <thead>
-                                <tr className="border-b border-slate-700">
-                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[14%]">Restaurant</th>
-                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[18%]">Owner Email</th>
-                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[12%]">End Date</th>
-                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[14%]">Status</th>
-                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[10%]">Last Sent</th>
-                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[16%]">Delivery</th>
-                                    <th className="text-left px-3 py-3 text-slate-400 text-xs font-semibold w-[8%]">Error</th>
-                                    <th className="text-right px-3 py-3 text-slate-400 text-xs font-semibold w-[8%]">Actions</th>
+                                <tr className="border-b border-white/8">
+                                    <th className="text-left px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[14%]">Restaurant</th>
+                                    <th className="text-left px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[18%]">Owner Email</th>
+                                    <th className="text-left px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[12%]">End Date</th>
+                                    <th className="text-left px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[14%]">Status</th>
+                                    <th className="text-left px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[10%]">Last Sent</th>
+                                    <th className="text-left px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[16%]">Delivery</th>
+                                    <th className="text-left px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[8%]">Error</th>
+                                    <th className="text-right px-3 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-[0.16em] w-[8%]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -266,7 +266,7 @@ export default function SuperAdminEmailsPage() {
                                     const canManualSend = hasEndDate && row.reminders_enabled && !row.account_temporarily_disabled && !alreadySentToday;
 
                                     return (
-                                        <tr key={row.id} className="border-b border-slate-700/60">
+                                        <tr key={row.id} className="border-b border-white/6 hover:bg-white/[0.05] transition-colors">
                                             <td className="px-3 py-3 align-top">
                                                 <p className="text-white font-medium">{row.name}</p>
                                                 <p className="text-slate-500 text-xs">{row.id}</p>

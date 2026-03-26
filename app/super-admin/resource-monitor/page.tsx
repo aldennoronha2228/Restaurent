@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
     Activity,
@@ -11,14 +11,7 @@ import {
     Sparkles,
     Wifi,
 } from 'lucide-react';
-import {
-    collection,
-    doc,
-    onSnapshot,
-    type Unsubscribe,
-} from 'firebase/firestore';
-import { getMetadata, listAll, ref } from 'firebase/storage';
-import { adminDb, adminStorage } from '@/lib/firebase';
+import { getResourceMonitorData } from '@/lib/firebase-super-admin-actions';
 import { cn } from '@/lib/utils';
 
 export interface RestaurantUsage {
@@ -54,39 +47,6 @@ function clampPercent(used: number, limit: number): number {
     return Math.min(100, Math.max(0, (used / limit) * 100));
 }
 
-function toNumber(...values: unknown[]): number {
-    for (const value of values) {
-        if (typeof value === 'number' && Number.isFinite(value)) return value;
-        if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
-    }
-    return 0;
-}
-
-function firstPositiveNumber(...values: unknown[]): number {
-    for (const value of values) {
-        const numeric = toNumber(value);
-        if (numeric > 0) return numeric;
-    }
-    return 0;
-}
-
-function normalizeStatus(rawStatus: unknown, endDateRaw: unknown): RestaurantUsage['subscription_status'] {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (typeof endDateRaw === 'string' && endDateRaw) {
-        const endDate = new Date(endDateRaw);
-        if (!Number.isNaN(endDate.getTime())) {
-            const normalized = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
-            if (normalized < today) return 'expired';
-        }
-    }
-
-    if (rawStatus === 'active' || rawStatus === 'past_due' || rawStatus === 'cancelled' || rawStatus === 'trial' || rawStatus === 'expired') {
-        return rawStatus;
-    }
-    return 'active';
-}
-
 function tierBadgeClass(tier: RestaurantUsage['subscription_tier']): string {
     if (tier === 'pro' || tier === '2k') return 'bg-purple-500/20 text-purple-300 border-purple-500/40';
     if (tier === '2.5k') return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
@@ -97,185 +57,78 @@ function resolveDailyAiTier(tier: RestaurantUsage['subscription_tier']): 'free' 
     return tier === 'pro' || tier === '2k' || tier === '2.5k' ? 'pro' : 'free';
 }
 
-async function sumStorageBytesRecursive(prefix: string): Promise<number> {
-    const root = ref(adminStorage, prefix);
-
-    const walk = async (folderRef: ReturnType<typeof ref>): Promise<number> => {
-        const result = await listAll(folderRef);
-        const fileBytes = await Promise.all(result.items.map(async (itemRef) => {
-            const metadata = await getMetadata(itemRef);
-            return Number(metadata.size || 0);
-        }));
-
-        const nested = await Promise.all(result.prefixes.map((subRef) => walk(subRef)));
-        const localTotal = fileBytes.reduce((a, b) => a + b, 0);
-        const nestedTotal = nested.reduce((a, b) => a + b, 0);
-        return localTotal + nestedTotal;
-    };
-
-    try {
-        return await walk(root);
-    } catch {
-        return 0;
-    }
-}
-
 export default function ResourceMonitorPage() {
     const [rows, setRows] = useState<RestaurantUsage[]>([]);
     const [loading, setLoading] = useState(true);
     const [snapshotError, setSnapshotError] = useState<string | null>(null);
     const [rowStorageLoading, setRowStorageLoading] = useState<Record<string, boolean>>({});
     const [rowStorageError, setRowStorageError] = useState<Record<string, string>>({});
-    const [hasInitialStorageSync, setHasInitialStorageSync] = useState(false);
-
-    const usageUnsubsRef = useRef<Record<string, Unsubscribe>>({});
-
-    const syncStorageForRow = useCallback(async (restaurantId: string) => {
-        setRowStorageLoading((prev) => ({ ...prev, [restaurantId]: true }));
-        setRowStorageError((prev) => ({ ...prev, [restaurantId]: '' }));
+    const loadResourceData = useCallback(async (restaurantId?: string) => {
+        if (restaurantId) {
+            setRowStorageLoading((prev) => ({ ...prev, [restaurantId]: true }));
+            setRowStorageError((prev) => ({ ...prev, [restaurantId]: '' }));
+        } else {
+            setLoading(true);
+        }
 
         try {
-            const prefixes = [`restaurants/${restaurantId}/`, `${restaurantId}/`];
-            const scanPromise = (async () => {
-                let bytes = 0;
-                for (const prefix of prefixes) {
-                    const next = await sumStorageBytesRecursive(prefix);
-                    if (next > 0) {
-                        bytes = next;
-                        break;
-                    }
-                }
-                return bytes;
-            })();
-
-            const timeoutPromise = new Promise<number>((resolve) => {
-                setTimeout(() => resolve(0), 15000);
+            setSnapshotError(null);
+            const { rows: serverRows } = await getResourceMonitorData();
+            const mappedRows: RestaurantUsage[] = serverRows.map((row) => {
+                const resolvedDailyTier = resolveDailyAiTier(row.subscription_tier);
+                return {
+                    id: row.id,
+                    name: row.name,
+                    logo_url: row.logo_url,
+                    subscription_tier: row.subscription_tier,
+                    subscription_status: row.subscription_status,
+                    storage_used_bytes: Math.max(0, row.storage_used_mb) * 1024 * 1024,
+                    storage_limit_bytes: Math.max(0, row.storage_limit_mb) * 1024 * 1024,
+                    ai_credits_used: Math.max(0, row.ai_credits_used),
+                    ai_credits_limit: Math.max(1, row.ai_credits_limit),
+                    db_reads: Math.max(0, row.db_reads),
+                    db_writes: Math.max(0, row.db_writes),
+                    bandwidth_used_bytes: Math.max(0, row.bandwidth_used_mb) * 1024 * 1024,
+                    bandwidth_limit_bytes: Math.max(0, row.bandwidth_limit_mb) * 1024 * 1024,
+                    daily_ai_count: 0,
+                    daily_ai_limit: resolvedDailyTier === 'pro' ? 30 : 5,
+                    daily_ai_tier: resolvedDailyTier,
+                };
             });
 
-            const bytes = await Promise.race([scanPromise, timeoutPromise]);
-
-            setRows((prev) => prev.map((row) => (
-                row.id === restaurantId ? { ...row, storage_used_bytes: bytes } : row
-            )));
-        } catch {
-            setRowStorageError((prev) => ({
-                ...prev,
-                [restaurantId]: 'Storage sync failed',
-            }));
+            if (restaurantId) {
+                const nextRow = mappedRows.find((row) => row.id === restaurantId);
+                if (nextRow) {
+                    setRows((prev) => prev.map((row) => (row.id === restaurantId ? nextRow : row)));
+                }
+            } else {
+                setRows(mappedRows);
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to load resource monitor data';
+            if (restaurantId) {
+                setRowStorageError((prev) => ({ ...prev, [restaurantId]: message }));
+            } else {
+                setSnapshotError(message);
+            }
         } finally {
-            setRowStorageLoading((prev) => ({ ...prev, [restaurantId]: false }));
+            if (restaurantId) {
+                setRowStorageLoading((prev) => ({ ...prev, [restaurantId]: false }));
+            } else {
+                setLoading(false);
+            }
         }
     }, []);
 
-    const syncAllStorage = useCallback(async () => {
-        const ids = rows.map((r) => r.id);
-        await Promise.all(ids.map((id) => syncStorageForRow(id)));
-    }, [rows, syncStorageForRow]);
-
     useEffect(() => {
-        const restaurantsRef = collection(adminDb, 'restaurants');
-
-        const unsubRestaurants = onSnapshot(
-            restaurantsRef,
-            (snapshot) => {
-                setSnapshotError(null);
-                Object.values(usageUnsubsRef.current).forEach((unsub) => unsub());
-                usageUnsubsRef.current = {};
-
-            const baseRows: RestaurantUsage[] = snapshot.docs.map((docSnap) => {
-                const d = docSnap.data() as Record<string, unknown>;
-
-                return {
-                    id: docSnap.id,
-                    name: String(d.name || docSnap.id),
-                    logo_url: (d.logo_url as string) || (d.logo as string) || null,
-                    subscription_tier: ((d.subscription_tier as RestaurantUsage['subscription_tier']) || 'starter'),
-                    subscription_status: normalizeStatus(d.subscription_status, d.subscription_end_date),
-                    storage_used_bytes: 0,
-                    storage_limit_bytes: firstPositiveNumber(d.storage_limit_bytes, d.storage_limit_mb ? Number(d.storage_limit_mb) * 1024 * 1024 : 0, 500 * 1024 * 1024),
-                    ai_credits_used: toNumber((d as any).usage?.ai_credits_used, d.ai_credits_used),
-                    ai_credits_limit: firstPositiveNumber(d.ai_credits_limit, 1000),
-                    db_reads: toNumber(d.db_reads, (d as any).usage?.db_reads),
-                    db_writes: toNumber(d.db_writes, (d as any).usage?.db_writes),
-                    bandwidth_used_bytes: toNumber(d.bandwidth_used_bytes, d.bandwidth_used_mb ? Number(d.bandwidth_used_mb) * 1024 * 1024 : 0),
-                    bandwidth_limit_bytes: firstPositiveNumber(d.bandwidth_limit_bytes, d.bandwidth_limit_mb ? Number(d.bandwidth_limit_mb) * 1024 * 1024 : 0, 2 * 1024 * 1024 * 1024),
-                    daily_ai_count: toNumber((d as any).usage?.dailyAiCount),
-                    daily_ai_limit: resolveDailyAiTier(((d.subscription_tier as RestaurantUsage['subscription_tier']) || 'starter')) === 'pro' ? 30 : 5,
-                    daily_ai_tier: resolveDailyAiTier(((d.subscription_tier as RestaurantUsage['subscription_tier']) || 'starter')),
-                };
-            });
-
-            setRows((prev) => baseRows.map((base) => {
-                const existing = prev.find((p) => p.id === base.id);
-                if (!existing) return base;
-                return {
-                    ...base,
-                    storage_used_bytes: existing.storage_used_bytes,
-                };
-            }));
+        loadResourceData().catch(() => {
+            setSnapshotError('Failed to load resource monitor data');
             setLoading(false);
-
-                baseRows.forEach((row) => {
-                    const usageRef = doc(adminDb, 'restaurants', row.id, 'usage', 'ai_credits_used');
-                    usageUnsubsRef.current[row.id] = onSnapshot(
-                        usageRef,
-                        (usageSnap) => {
-                            const usage = usageSnap.exists() ? (usageSnap.data() as Record<string, unknown>) : {};
-                            setRows((prev) => prev.map((prevRow) => {
-                                if (prevRow.id !== row.id) return prevRow;
-                                return {
-                                    ...prevRow,
-                                    ai_credits_used: toNumber(usage.ai_credits_used, usage.used, prevRow.ai_credits_used),
-                                    ai_credits_limit: toNumber(usage.ai_credits_limit, prevRow.ai_credits_limit),
-                                    db_reads: toNumber(usage.db_reads, usage.firestore_reads, prevRow.db_reads),
-                                    db_writes: toNumber(usage.db_writes, usage.firestore_writes, prevRow.db_writes),
-                                    bandwidth_used_bytes: toNumber(
-                                        usage.bandwidth_used_bytes,
-                                        usage.bandwidth_used_mb ? Number(usage.bandwidth_used_mb) * 1024 * 1024 : 0,
-                                        prevRow.bandwidth_used_bytes,
-                                    ),
-                                };
-                            }));
-                        },
-                        (error) => {
-                            if (error.code === 'permission-denied') {
-                                setSnapshotError('Permission denied for usage metrics. Deploy updated Firestore rules and ensure super_admin claims are present.');
-                            }
-                        },
-                    );
-                });
-            },
-            (error) => {
-                setLoading(false);
-                if (error.code === 'permission-denied') {
-                    setSnapshotError('Permission denied for restaurants listener. Check Firestore rules deployment and custom claims.');
-                } else {
-                    setSnapshotError(`Realtime listener error: ${error.message}`);
-                }
-            },
-        );
-
-        return () => {
-            unsubRestaurants();
-            Object.values(usageUnsubsRef.current).forEach((unsub) => unsub());
-            usageUnsubsRef.current = {};
-        };
-    }, []);
-
-    useEffect(() => {
-        if (hasInitialStorageSync || rows.length === 0) return;
-        setHasInitialStorageSync(true);
-        syncAllStorage().catch(() => {
-            // best-effort sync; row-level retry is available
         });
-    }, [hasInitialStorageSync, rows.length, syncAllStorage]);
+    }, [loadResourceData]);
 
     const handleSyncNow = async (restaurantId?: string) => {
-        if (restaurantId) {
-            await syncStorageForRow(restaurantId);
-            return;
-        }
-        await syncAllStorage();
+        await loadResourceData(restaurantId);
     };
 
     const totalAiCreditsUsed = useMemo(() => rows.reduce((acc, row) => acc + row.ai_credits_used, 0), [rows]);
@@ -299,7 +152,7 @@ export default function ResourceMonitorPage() {
         return (
             <div className="flex items-center justify-center h-[60vh]">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-400 rounded-full animate-spin"></div>
                     <p className="text-slate-400">Loading resource monitor...</p>
                 </div>
             </div>
@@ -307,28 +160,28 @@ export default function ResourceMonitorPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 isolate text-slate-100">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                <div className="rounded-xl bg-slate-800/80 border border-slate-700/60 px-4 py-3 backdrop-blur-sm">
-                    <p className="text-slate-400 text-xs">Total Global Storage</p>
-                    <p className="text-white text-lg font-semibold mt-1 flex items-center gap-2">
-                        <HardDrive className="w-4 h-4 text-cyan-400" />
+                <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 px-4 py-3">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.18em]">Total Global Storage</p>
+                    <p className="text-white text-2xl font-semibold tracking-tight mt-1 flex items-center gap-2">
+                        <HardDrive className="w-4 h-4 text-cyan-300" strokeWidth={1.5} />
                         {bytesToReadable(summary.totalGlobalStorageBytes)}
                     </p>
                 </div>
 
-                <div className="rounded-xl bg-slate-800/80 border border-slate-700/60 px-4 py-3 backdrop-blur-sm">
-                    <p className="text-slate-400 text-xs">Total AI Cost</p>
-                    <p className="text-white text-lg font-semibold mt-1 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-purple-400" />
+                <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 px-4 py-3">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.18em]">Total AI Cost</p>
+                    <p className="text-white text-2xl font-semibold tracking-tight mt-1 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-violet-300" strokeWidth={1.5} />
                         ₹{summary.totalAiCostInr.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                     </p>
                 </div>
 
-                <div className="rounded-xl bg-slate-800/80 border border-slate-700/60 px-4 py-3 backdrop-blur-sm">
-                    <p className="text-slate-400 text-xs">Hotels near Limit</p>
-                    <p className="text-white text-lg font-semibold mt-1 flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 px-4 py-3">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.18em]">Hotels near Limit</p>
+                    <p className="text-white text-2xl font-semibold tracking-tight mt-1 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-300" strokeWidth={1.5} />
                         {summary.hotelsNearLimit}
                     </p>
                 </div>
@@ -336,7 +189,7 @@ export default function ResourceMonitorPage() {
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Resource Monitor</h1>
+                    <h1 className="text-3xl font-semibold tracking-tight text-white">Resource Monitor</h1>
                     <p className="text-slate-400 mt-1">
                         {rows.length} restaurants tracked • {formatCompact(totalAiCreditsUsed)} AI credits used this month
                     </p>
@@ -348,14 +201,14 @@ export default function ResourceMonitorPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => handleSyncNow()}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-50"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:text-violet-200 hover:border-violet-400/40 hover:bg-violet-500/10 transition-all disabled:opacity-50"
                 >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className="w-4 h-4" strokeWidth={1.5} />
                     Sync Now
                 </motion.button>
             </div>
 
-            <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-x-auto">
+            <div className="rounded-3xl border border-white/8 bg-[#0b0b0c]/85 overflow-x-auto">
                 {rows.length === 0 ? (
                     <div className="h-64 flex items-center justify-center text-slate-400">
                         No restaurants found for usage monitoring.
@@ -363,13 +216,13 @@ export default function ResourceMonitorPage() {
                 ) : (
                     <table className="w-full min-w-[1120px]">
                         <thead>
-                            <tr className="border-b border-slate-700">
-                                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Restaurant</th>
-                                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Firebase Storage</th>
-                                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">AI Credits</th>
-                                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Tier Comparison</th>
-                                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Database Ops</th>
-                                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Bandwidth</th>
+                            <tr className="border-b border-white/8">
+                                <th className="text-left px-6 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Restaurant</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Firebase Storage</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">AI Credits</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Tier Comparison</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Database Ops</th>
+                                <th className="text-left px-6 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Bandwidth</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -384,7 +237,7 @@ export default function ResourceMonitorPage() {
                                     <tr
                                         key={row.id}
                                         className={cn(
-                                            'border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors',
+                                            'border-b border-white/6 hover:bg-white/[0.05] transition-colors',
                                             nearLimit && 'bg-amber-500/[0.03]'
                                         )}
                                     >
@@ -394,7 +247,7 @@ export default function ResourceMonitorPage() {
                                                     <img
                                                         src={row.logo_url}
                                                         alt={row.name}
-                                                        className="w-10 h-10 rounded-lg object-cover border border-slate-700"
+                                                        className="w-10 h-10 rounded-lg object-cover border border-white/10"
                                                     />
                                                 ) : (
                                                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold">

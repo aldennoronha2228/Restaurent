@@ -11,7 +11,7 @@ import {
     Search, MoreVertical, Building2, User, CreditCard,
     ChevronLeft, ChevronRight, LogIn, KeyRound,
     Trash2, AlertTriangle, Check, X, Copy, FileText, Calendar,
-    Eye, EyeOff, RefreshCw, Shield, Users, Filter, DollarSign, TrendingUp, Clock3, Archive, Mail, MailX
+    Eye, EyeOff, RefreshCw, Shield, Users, Filter, TrendingUp, Clock3, Archive, Mail, MailX
 } from 'lucide-react';
 import Link from 'next/link';
 import { DayPicker } from 'react-day-picker';
@@ -49,6 +49,14 @@ const statusColors = {
     cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
     trial: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
     expired: 'bg-red-600/30 text-red-300 border-red-500/50',
+};
+
+const statusOrbColors: Record<string, string> = {
+    active: 'bg-emerald-400',
+    past_due: 'bg-amber-300',
+    cancelled: 'bg-rose-400',
+    trial: 'bg-cyan-300',
+    expired: 'bg-rose-500',
 };
 
 const tierLabels: Record<string, string> = {
@@ -345,34 +353,33 @@ export default function RestaurantManager() {
     }, [actionMessage]);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-7 text-slate-100">
             {/* Top metrics row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="bg-slate-800/70 backdrop-blur-sm rounded-xl px-4 py-3">
-                    <p className="text-slate-400 text-xs">Total Revenue</p>
-                    <p className="text-white text-lg font-semibold mt-1 flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-emerald-400" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-3">
+                <div className="xl:col-span-5 rounded-3xl px-5 py-5 bg-white/[0.04] backdrop-blur-xl">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.2em]">Total Revenue</p>
+                    <p className="text-white text-4xl font-semibold tracking-tight mt-2 flex items-center gap-2">
                         ₹{metrics.total_revenue.toLocaleString('en-IN')}
                     </p>
                 </div>
-                <div className="bg-slate-800/70 backdrop-blur-sm rounded-xl px-4 py-3">
-                    <p className="text-slate-400 text-xs">Total Active Restaurants</p>
-                    <p className="text-white text-lg font-semibold mt-1">{metrics.total_active_restaurants}</p>
+                <div className="xl:col-span-3 rounded-3xl px-5 py-5 bg-white/[0.04] backdrop-blur-xl">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.2em]">Total Active Restaurants</p>
+                    <p className="text-white text-3xl font-semibold tracking-tight mt-2">{metrics.total_active_restaurants}</p>
                 </div>
-                <div className="bg-slate-800/70 backdrop-blur-sm rounded-xl px-4 py-3">
-                    <p className="text-slate-400 text-xs">Growth %</p>
+                <div className="xl:col-span-2 rounded-3xl px-5 py-5 bg-white/[0.04] backdrop-blur-xl">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.2em]">Growth %</p>
                     <p className={cn(
-                        "text-lg font-semibold mt-1 flex items-center gap-2",
+                        "text-2xl font-semibold mt-2 flex items-center gap-2 tracking-tight",
                         metrics.growth_percent >= 0 ? 'text-green-400' : 'text-red-400'
                     )}>
-                        <TrendingUp className="w-4 h-4" />
+                        <TrendingUp className="w-4 h-4" strokeWidth={1.5} />
                         {metrics.growth_percent >= 0 ? '+' : ''}{metrics.growth_percent}%
                     </p>
                 </div>
-                <div className="bg-slate-800/70 backdrop-blur-sm rounded-xl px-4 py-3">
-                    <p className="text-slate-400 text-xs">Pending Renewals</p>
-                    <p className="text-amber-400 text-lg font-semibold mt-1 flex items-center gap-2">
-                        <Clock3 className="w-4 h-4" />
+                <div className="xl:col-span-2 rounded-3xl px-5 py-5 bg-white/[0.04] backdrop-blur-xl">
+                    <p className="text-slate-400 text-[11px] uppercase tracking-[0.2em]">Pending Renewals</p>
+                    <p className="text-amber-300 text-2xl font-semibold mt-2 flex items-center gap-2 tracking-tight">
+                        <Clock3 className="w-4 h-4" strokeWidth={1.5} />
                         {metrics.pending_renewals}
                     </p>
                 </div>
@@ -394,7 +401,7 @@ export default function RestaurantManager() {
                             placeholder="Search restaurants..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.05] border border-white/10 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:border-violet-400/50 focus:ring-1 focus:ring-violet-500/40"
                         />
                     </div>
                     <div className="relative w-full sm:w-auto">
@@ -403,8 +410,8 @@ export default function RestaurantManager() {
                             className={cn(
                                 "w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition-colors",
                                 (tierFilter !== 'all' || statusFilter !== 'all')
-                                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-300'
-                                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                                    ? 'bg-violet-500/20 border-violet-500/30 text-violet-200'
+                                    : 'bg-white/[0.05] border-white/10 text-slate-300 hover:bg-white/[0.1]'
                             )}
                         >
                             <Filter className="w-4 h-4" />
@@ -417,7 +424,7 @@ export default function RestaurantManager() {
                                     initial={{ opacity: 0, y: -6 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -6 }}
-                                    className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-30 p-4"
+                                    className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] bg-[#0d0d0e]/95 border border-white/10 rounded-2xl shadow-xl z-30 p-4 backdrop-blur-2xl"
                                 >
                                     <p className="text-slate-300 text-sm mb-2">Tier</p>
                                     <div className="flex flex-wrap gap-2 mb-4">
@@ -428,8 +435,8 @@ export default function RestaurantManager() {
                                                 className={cn(
                                                     "px-3 py-1.5 rounded-lg text-xs capitalize transition-colors",
                                                     tierFilter === tier
-                                                        ? 'bg-purple-600 text-white'
-                                                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                                        ? 'bg-violet-500 text-white'
+                                                        : 'bg-white/10 text-slate-300 hover:bg-white/15'
                                                 )}
                                             >
                                                 {tier}
@@ -446,8 +453,8 @@ export default function RestaurantManager() {
                                                 className={cn(
                                                     "px-3 py-1.5 rounded-lg text-xs capitalize transition-colors",
                                                     statusFilter === status
-                                                        ? 'bg-purple-600 text-white'
-                                                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                                        ? 'bg-violet-500 text-white'
+                                                        : 'bg-white/10 text-slate-300 hover:bg-white/15'
                                                 )}
                                             >
                                                 {status.replace('_', ' ')}
@@ -482,7 +489,7 @@ export default function RestaurantManager() {
             </AnimatePresence>
 
             {/* Table */}
-            <div className="bg-slate-800 rounded-2xl border border-slate-700">
+            <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 overflow-hidden">
                 {loading ? (
                     <div className="flex items-center justify-center h-64">
                         <div className="w-8 h-8 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
@@ -496,15 +503,15 @@ export default function RestaurantManager() {
                     <div className="overflow-x-auto">
                         <table className="w-full min-w-[1120px]">
                             <thead>
-                                <tr className="border-b border-slate-700">
-                                    <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Restaurant</th>
-                                    <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Owner</th>
-                                    <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Team</th>
-                                    <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Tier</th>
-                                    <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Status</th>
-                                    <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Ends On</th>
-                                    <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Last Report</th>
-                                    <th className="text-right px-6 py-4 text-sm font-medium text-slate-400">Actions</th>
+                                <tr className="border-b border-white/10">
+                                    <th className="text-left px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Restaurant</th>
+                                    <th className="text-left px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Owner</th>
+                                    <th className="text-left px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Team</th>
+                                    <th className="text-left px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Tier</th>
+                                    <th className="text-left px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Status</th>
+                                    <th className="text-left px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Ends On</th>
+                                    <th className="text-left px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Last Report</th>
+                                    <th className="text-right px-6 py-4 text-[11px] font-medium tracking-[0.18em] uppercase text-slate-500">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -515,11 +522,11 @@ export default function RestaurantManager() {
                                     return (
                                     <tr
                                         key={restaurant.id}
-                                        className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
+                                        className="group border-b border-white/6 hover:bg-white/[0.06] transition-colors"
                                     >
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold">
+                                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500/80 flex items-center justify-center text-white font-bold">
                                                     {restaurant.name[0]?.toUpperCase() || 'R'}
                                                 </div>
                                                 <div>
@@ -571,7 +578,7 @@ export default function RestaurantManager() {
                                             <button
                                                 onClick={() => setShowTierModal(restaurant.id)}
                                                 className={cn(
-                                                    "px-3 py-1 rounded-full text-xs font-medium border hover:opacity-80 transition-opacity",
+                                                    "px-3 py-1 rounded-full text-xs font-medium border hover:opacity-90 transition-opacity",
                                                     tierColors[restaurant.subscription_tier]
                                                 )}
                                             >
@@ -579,28 +586,23 @@ export default function RestaurantManager() {
                                             </button>
                                         </td>
                                         <td className="px-6 py-4">
-                                            {restaurant.subscription_status === 'expired' ? (
-                                                <span className={cn(
-                                                    "px-3 py-1 rounded-full text-xs font-medium border inline-flex",
-                                                    statusColors.expired
-                                                )}>
-                                                    Expired
-                                                </span>
-                                            ) : (
-                                                <select
-                                                    value={restaurant.subscription_status}
-                                                    onChange={(e) => handleStatusChange(restaurant.id, e.target.value as any)}
-                                                    className={cn(
-                                                        "px-3 py-1 rounded-full text-xs font-medium border bg-transparent cursor-pointer focus:outline-none",
-                                                        statusColors[restaurant.subscription_status]
-                                                    )}
-                                                >
-                                                    <option value="active" className="bg-slate-800">Active</option>
-                                                    <option value="past_due" className="bg-slate-800">Past Due</option>
-                                                    <option value="cancelled" className="bg-slate-800">Cancelled</option>
-                                                    <option value="trial" className="bg-slate-800">Trial</option>
-                                                </select>
-                                            )}
+                                            <div className="inline-flex items-center gap-2">
+                                                <span className={cn("h-2.5 w-2.5 rounded-full shadow-[0_0_14px_currentColor]", statusOrbColors[restaurant.subscription_status] || 'bg-slate-400')} />
+                                                {restaurant.subscription_status === 'expired' ? (
+                                                    <span className="text-xs text-slate-200 capitalize tracking-wide">Expired</span>
+                                                ) : (
+                                                    <select
+                                                        value={restaurant.subscription_status}
+                                                        onChange={(e) => handleStatusChange(restaurant.id, e.target.value as any)}
+                                                        className="bg-transparent text-xs text-slate-200 capitalize tracking-wide cursor-pointer focus:outline-none"
+                                                    >
+                                                        <option value="active" className="bg-[#111111]">Active</option>
+                                                        <option value="past_due" className="bg-[#111111]">Past Due</option>
+                                                        <option value="cancelled" className="bg-[#111111]">Cancelled</option>
+                                                        <option value="trial" className="bg-[#111111]">Trial</option>
+                                                    </select>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-2">
@@ -619,10 +621,10 @@ export default function RestaurantManager() {
                                                 </div>
                                                 <button
                                                     onClick={() => openDatesModal(restaurant)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs transition-colors"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/8 hover:bg-white/15 text-slate-200 text-xs transition-colors"
                                                     title="Set subscription/trial dates"
                                                 >
-                                                    <Calendar className="w-3.5 h-3.5" />
+                                                    <Calendar className="w-3.5 h-3.5" strokeWidth={1.5} />
                                                     Set
                                                 </button>
                                             </div>
@@ -646,9 +648,9 @@ export default function RestaurantManager() {
                                             <div className="relative inline-block">
                                                 <button
                                                     onClick={() => setActiveMenu(activeMenu === restaurant.id ? null : restaurant.id)}
-                                                    className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                                                    className="p-2 hover:bg-white/12 rounded-lg transition-colors"
                                                 >
-                                                    <MoreVertical className="w-5 h-5 text-slate-400" />
+                                                    <MoreVertical className="w-5 h-5 text-slate-400" strokeWidth={1.5} />
                                                 </button>
 
                                                 <AnimatePresence>
@@ -658,14 +660,14 @@ export default function RestaurantManager() {
                                                             animate={{ opacity: 1, scale: 1 }}
                                                             exit={{ opacity: 0, scale: 0.95 }}
                                                             className={cn(
-                                                                'absolute right-0 w-48 bg-slate-700 rounded-xl border border-slate-600 shadow-xl z-30 overflow-hidden',
+                                                                'absolute right-0 w-52 bg-[#111112]/96 rounded-2xl border border-white/10 shadow-xl z-30 overflow-hidden backdrop-blur-2xl',
                                                                 shouldOpenUp ? 'bottom-full mb-1' : 'top-full mt-1'
                                                             )}
                                                         >
                                                             <Link
                                                                 href={`/super-admin/impersonate/${restaurant.id}`}
                                                                 onClick={() => setActiveMenu(null)}
-                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
+                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/10 transition-colors"
                                                             >
                                                                 <LogIn className="w-4 h-4" />
                                                                 Impersonate
@@ -675,14 +677,14 @@ export default function RestaurantManager() {
                                                                     setShowExtendModal(restaurant);
                                                                     setActiveMenu(null);
                                                                 }}
-                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
+                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/10 transition-colors"
                                                             >
                                                                 <Calendar className="w-4 h-4" />
                                                                 Quick Extend
                                                             </button>
                                                             <button
                                                                 onClick={() => openPasswordModal(restaurant.id)}
-                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
+                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/10 transition-colors"
                                                             >
                                                                 <KeyRound className="w-4 h-4" />
                                                                 Reset Password
@@ -692,7 +694,7 @@ export default function RestaurantManager() {
                                                                     setShowTierModal(restaurant.id);
                                                                     setActiveMenu(null);
                                                                 }}
-                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
+                                                                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/10 transition-colors"
                                                             >
                                                                 <CreditCard className="w-4 h-4" />
                                                                 Change Tier
