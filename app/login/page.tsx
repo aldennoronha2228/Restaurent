@@ -138,41 +138,10 @@ export default function LoginPage() {
 
         const resolveRedirect = async () => {
             if (mustChangePassword) {
-                const user = tenantAuth.currentUser;
-                if (user) {
-                    const freshTokenResult = await user.getIdTokenResult(true).catch(() => null);
-                    const claimRequiresChange = Boolean(freshTokenResult?.claims?.must_change_password);
-
-                    if (!claimRequiresChange) {
-                        const idToken = await user.getIdToken().catch(() => '');
-                        if (idToken) {
-                            const profileRes = await fetch('/api/auth/profile', {
-                                headers: { Authorization: `Bearer ${idToken}` },
-                                cache: 'no-store',
-                            }).catch(() => null);
-
-                            if (profileRes?.ok) {
-                                const payload = await profileRes.json().catch(() => ({}));
-                                if (payload?.profile?.must_change_password) {
-                                    if (!cancelled) {
-                                        router.replace('/change-password');
-                                    }
-                                    return;
-                                }
-                            }
-                        }
-                    } else {
-                        if (!cancelled) {
-                            router.replace('/change-password');
-                        }
-                        return;
-                    }
-                } else {
-                    if (!cancelled) {
-                        router.replace('/change-password');
-                    }
-                    return;
-                }
+                // Do not auto-force change-password when user just opens /login.
+                // This avoids cross-account/stale-session jumps on shared devices.
+                setInfo('An existing session on this browser requires password update. Sign in with your account to continue, or sign out current session first.');
+                return;
             }
 
             if (userRole === 'super_admin') {
