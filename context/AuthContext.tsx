@@ -383,7 +383,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // Skip re-fetching tenant if we already have it
                 if (hasTenantRef.current && isSameResolvedUser) {
                     console.log('[AuthContext] Skipping profile re-fetch - tenant data exists');
-                    setState(prev => ({ ...prev, tenantLoading: false }));
+                    const freshTokenResult = await user.getIdTokenResult(true).catch(() => null);
+                    const freshMustChangePassword = typeof freshTokenResult?.claims?.must_change_password === 'boolean'
+                        ? Boolean(freshTokenResult.claims.must_change_password)
+                        : undefined;
+
+                    setState(prev => ({
+                        ...prev,
+                        mustChangePassword: typeof freshMustChangePassword === 'boolean'
+                            ? freshMustChangePassword
+                            : prev.mustChangePassword,
+                        loading: false,
+                        tenantLoading: false,
+                    }));
                     return;
                 }
 

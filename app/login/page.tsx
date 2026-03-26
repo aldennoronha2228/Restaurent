@@ -130,23 +130,68 @@ export default function LoginPage() {
     };
 
     useEffect(() => {
-        if (!loading && !tenantLoading && !adminLoading && session) {
+        if (loading || tenantLoading || adminLoading || !session) {
+            return;
+        }
+
+        let cancelled = false;
+
+        const resolveRedirect = async () => {
             if (mustChangePassword) {
-                router.replace('/change-password');
-                return;
+                const user = tenantAuth.currentUser;
+                if (user) {
+                    const freshTokenResult = await user.getIdTokenResult(true).catch(() => null);
+                    const claimRequiresChange = Boolean(freshTokenResult?.claims?.must_change_password);
+
+                    if (!claimRequiresChange) {
+                        const idToken = await user.getIdToken().catch(() => '');
+                        if (idToken) {
+                            const profileRes = await fetch('/api/auth/profile', {
+                                headers: { Authorization: `Bearer ${idToken}` },
+                                cache: 'no-store',
+                            }).catch(() => null);
+
+                            if (profileRes?.ok) {
+                                const payload = await profileRes.json().catch(() => ({}));
+                                if (payload?.profile?.must_change_password) {
+                                    if (!cancelled) {
+                                        router.replace('/change-password');
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                    } else {
+                        if (!cancelled) {
+                            router.replace('/change-password');
+                        }
+                        return;
+                    }
+                } else {
+                    if (!cancelled) {
+                        router.replace('/change-password');
+                    }
+                    return;
+                }
             }
 
             if (userRole === 'super_admin') {
-                if (adminSession) {
+                if (adminSession && !cancelled) {
                     router.replace('/super-admin');
                 }
                 return;
             }
 
-            if (userRole && tenantId) {
+            if (userRole && tenantId && !cancelled) {
                 router.replace(`/${tenantId}/dashboard/orders`);
             }
-        }
+        };
+
+        resolveRedirect().catch(() => { });
+
+        return () => {
+            cancelled = true;
+        };
     }, [session, loading, tenantLoading, adminLoading, adminSession, userRole, tenantId, mustChangePassword, router]);
 
     const handleEmailAuth = async (e: React.FormEvent) => {

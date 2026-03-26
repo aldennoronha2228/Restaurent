@@ -84,6 +84,11 @@ type AuthorizedRestaurant = {
 type ParsedAction =
     | { type: 'add_table'; seats: number; name?: string }
     | { type: 'add_menu_item'; name: string; price: number; category: string; foodType: 'veg' | 'non-veg'; imageUrl?: string }
+    | { type: 'update_menu_item_price'; name: string; price: number }
+    | { type: 'toggle_menu_item_availability'; name: string; available: boolean }
+    | { type: 'delete_menu_item'; name: string }
+    | { type: 'add_category'; name: string }
+    | { type: 'rename_category'; from: string; to: string }
     | { type: 'arrange_tables_square' }
     | { type: 'keep_first_tables'; count: number }
     | { type: 'unknown' };
@@ -178,7 +183,12 @@ function parseActionFromText(text: string): ParsedAction {
         }
     }
 
-    if (lower.includes('add menu item') || lower.includes('add item to menu') || lower.startsWith('add item')) {
+    if (
+        lower.includes('add menu item') ||
+        lower.includes('add item to menu') ||
+        lower.startsWith('add item') ||
+        (/(add|create)\b/.test(lower) && /(menu|item|dish)\b/.test(lower))
+    ) {
         const name = (normalized.match(/name\s*[:=]\s*([^,\n]+)/i)?.[1] || '').trim();
         const priceText = (normalized.match(/price\s*[:=]?\s*([0-9]+(?:\.[0-9]{1,2})?)/i)?.[1] || '').trim();
         const category = (normalized.match(/category\s*[:=]\s*([^,\n]+)/i)?.[1] || '').trim();
@@ -194,6 +204,69 @@ function parseActionFromText(text: string): ParsedAction {
                 category,
                 foodType: typeText.includes('non') ? 'non-veg' : 'veg',
                 imageUrl: imageUrl || undefined,
+            };
+        }
+    }
+
+    const updatePriceMatch =
+        normalized.match(/(?:set|change|update)\s+(?:the\s+)?price\s+(?:of\s+)?(?:menu\s+item\s+)?"?([^"\n]+?)"?\s+(?:to|as)\s*([0-9]+(?:\.[0-9]{1,2})?)/i) ||
+        normalized.match(/(?:set|change|update)\s+(?:menu\s+item\s+)?"?([^"\n]+?)"?\s+price\s+(?:to|as)\s*([0-9]+(?:\.[0-9]{1,2})?)/i);
+    if (updatePriceMatch) {
+        const name = updatePriceMatch[1].trim();
+        const price = Number(updatePriceMatch[2]);
+        if (name && Number.isFinite(price) && price > 0) {
+            return {
+                type: 'update_menu_item_price',
+                name,
+                price,
+            };
+        }
+    }
+
+    const setAvailabilityMatch = normalized.match(/(?:make|set|mark|turn)\s+(?:menu\s+item\s+)?"?([^"\n]+?)"?\s+(available|unavailable|on|off|enable|enabled|disable|disabled|show|hide)/i);
+    if (setAvailabilityMatch) {
+        const name = setAvailabilityMatch[1].trim();
+        const state = setAvailabilityMatch[2].trim().toLowerCase();
+        if (name) {
+            return {
+                type: 'toggle_menu_item_availability',
+                name,
+                available: ['available', 'on', 'enable', 'enabled', 'show'].includes(state),
+            };
+        }
+    }
+
+    const deleteItemMatch = normalized.match(/(?:delete|remove)\s+(?:menu\s+item\s+)?"?([^"\n]+?)"?$/i);
+    if (deleteItemMatch) {
+        const name = deleteItemMatch[1].trim();
+        if (name) {
+            return {
+                type: 'delete_menu_item',
+                name,
+            };
+        }
+    }
+
+    const addCategoryMatch = normalized.match(/(?:add|create)\s+(?:a\s+)?category\s*[:=]?\s*"?([^"\n]+?)"?$/i);
+    if (addCategoryMatch) {
+        const name = addCategoryMatch[1].trim();
+        if (name) {
+            return {
+                type: 'add_category',
+                name,
+            };
+        }
+    }
+
+    const renameCategoryMatch = normalized.match(/rename\s+category\s+"?([^"\n]+?)"?\s+(?:to|as)\s+"?([^"\n]+?)"?$/i);
+    if (renameCategoryMatch) {
+        const from = renameCategoryMatch[1].trim();
+        const to = renameCategoryMatch[2].trim();
+        if (from && to && from.toLowerCase() !== to.toLowerCase()) {
+            return {
+                type: 'rename_category',
+                from,
+                to,
             };
         }
     }
@@ -222,8 +295,8 @@ function parseActionFromText(text: string): ParsedAction {
 function looksLikeControlIntent(text: string): boolean {
     const normalized = text.trim().toLowerCase();
     if (!normalized) return false;
-    return /(add|create|insert|update|edit|delete|remove|arrange|make|set|organize|place|keep)\b/.test(normalized)
-        && /(table|tables|menu item|item|menu|floor plan|layout|square)\b/.test(normalized);
+    return /(add|create|insert|update|edit|delete|remove|arrange|make|set|organize|place|keep|rename|change|disable|enable|hide|show|unavailable|available|price)\b/.test(normalized)
+        && /(table|tables|menu item|item|menu|floor plan|layout|square|category|categories|availability)\b/.test(normalized);
 }
 
 function buildNextTablePosition(tableCount: number): { x: number; y: number } {
@@ -270,6 +343,28 @@ function buildSquarePositions(count: number): Array<{ x: number; y: number }> {
     }
 
     return positions.slice(0, count);
+}
+
+async function findCategoryByName(restaurantId: string, name: string) {
+    const target = name.trim().toLowerCase();
+    if (!target) return null;
+
+    const categoriesSnap = await adminFirestore.collection(`restaurants/${restaurantId}/categories`).get();
+    const exact = categoriesSnap.docs.find((docSnap) => String(docSnap.data()?.name || '').trim().toLowerCase() === target);
+    if (exact) return exact;
+
+    return categoriesSnap.docs.find((docSnap) => String(docSnap.data()?.name || '').trim().toLowerCase().includes(target)) || null;
+}
+
+async function findMenuItemByName(restaurantId: string, name: string) {
+    const target = name.trim().toLowerCase();
+    if (!target) return null;
+
+    const itemsSnap = await adminFirestore.collection(`restaurants/${restaurantId}/menu_items`).get();
+    const exact = itemsSnap.docs.find((docSnap) => String(docSnap.data()?.name || '').trim().toLowerCase() === target);
+    if (exact) return exact;
+
+    return itemsSnap.docs.find((docSnap) => String(docSnap.data()?.name || '').trim().toLowerCase().includes(target)) || null;
 }
 
 async function executeAction(action: ParsedAction, auth: AuthorizedRestaurant): Promise<ActionExecution | null> {
@@ -367,6 +462,164 @@ async function executeAction(action: ParsedAction, auth: AuthorizedRestaurant): 
                 category: categoryName,
                 price: action.price,
                 type: action.foodType,
+            },
+        };
+    }
+
+    if (action.type === 'update_menu_item_price') {
+        const menuItemDoc = await findMenuItemByName(auth.restaurantId, action.name);
+        if (!menuItemDoc) {
+            return {
+                ok: false,
+                message: `I could not find a menu item matching ${action.name}. Please share the exact item name.`,
+            };
+        }
+
+        await menuItemDoc.ref.update({
+            price: action.price,
+            updated_at: FieldValue.serverTimestamp(),
+        });
+
+        return {
+            ok: true,
+            message: `Done. Updated ${String(menuItemDoc.data()?.name || action.name)} price to ${action.price}.`,
+            data: {
+                id: menuItemDoc.id,
+                name: String(menuItemDoc.data()?.name || action.name),
+                price: action.price,
+            },
+        };
+    }
+
+    if (action.type === 'toggle_menu_item_availability') {
+        const menuItemDoc = await findMenuItemByName(auth.restaurantId, action.name);
+        if (!menuItemDoc) {
+            return {
+                ok: false,
+                message: `I could not find a menu item matching ${action.name}. Please share the exact item name.`,
+            };
+        }
+
+        await menuItemDoc.ref.update({
+            available: action.available,
+            updated_at: FieldValue.serverTimestamp(),
+        });
+
+        return {
+            ok: true,
+            message: `Done. Marked ${String(menuItemDoc.data()?.name || action.name)} as ${action.available ? 'available' : 'unavailable'}.`,
+            data: {
+                id: menuItemDoc.id,
+                name: String(menuItemDoc.data()?.name || action.name),
+                available: action.available,
+            },
+        };
+    }
+
+    if (action.type === 'delete_menu_item') {
+        const menuItemDoc = await findMenuItemByName(auth.restaurantId, action.name);
+        if (!menuItemDoc) {
+            return {
+                ok: false,
+                message: `I could not find a menu item matching ${action.name}. Please share the exact item name.`,
+            };
+        }
+
+        const removedName = String(menuItemDoc.data()?.name || action.name);
+        await menuItemDoc.ref.delete();
+
+        return {
+            ok: true,
+            message: `Done. Removed menu item ${removedName}.`,
+            data: {
+                id: menuItemDoc.id,
+                name: removedName,
+            },
+        };
+    }
+
+    if (action.type === 'add_category') {
+        const existing = await findCategoryByName(auth.restaurantId, action.name);
+        if (existing && String(existing.data()?.name || '').trim().toLowerCase() === action.name.trim().toLowerCase()) {
+            return {
+                ok: true,
+                message: `Category ${String(existing.data()?.name || action.name)} already exists.`,
+                data: {
+                    id: existing.id,
+                    name: String(existing.data()?.name || action.name),
+                },
+            };
+        }
+
+        const categoriesRef = adminFirestore.collection(`restaurants/${auth.restaurantId}/categories`);
+        const categoriesSnap = await categoriesRef.get();
+        const maxDisplayOrder = categoriesSnap.docs.reduce((max, docSnap) => {
+            const value = Number(docSnap.data()?.display_order || 0);
+            return Number.isFinite(value) && value > max ? value : max;
+        }, 0);
+
+        const newCategoryRef = categoriesRef.doc();
+        await newCategoryRef.set({
+            name: action.name,
+            display_order: maxDisplayOrder + 1,
+            created_at: FieldValue.serverTimestamp(),
+        });
+
+        return {
+            ok: true,
+            message: `Done. Added category ${action.name}.`,
+            data: {
+                id: newCategoryRef.id,
+                name: action.name,
+            },
+        };
+    }
+
+    if (action.type === 'rename_category') {
+        const sourceCategory = await findCategoryByName(auth.restaurantId, action.from);
+        if (!sourceCategory) {
+            return {
+                ok: false,
+                message: `I could not find category ${action.from}. Please share the exact category name.`,
+            };
+        }
+
+        const duplicateTarget = await findCategoryByName(auth.restaurantId, action.to);
+        if (duplicateTarget && duplicateTarget.id !== sourceCategory.id) {
+            return {
+                ok: false,
+                message: `Category ${action.to} already exists. Please choose another name.`,
+            };
+        }
+
+        await sourceCategory.ref.update({
+            name: action.to,
+            updated_at: FieldValue.serverTimestamp(),
+        });
+
+        const itemSnap = await adminFirestore
+            .collection(`restaurants/${auth.restaurantId}/menu_items`)
+            .where('category_id', '==', sourceCategory.id)
+            .get();
+
+        if (!itemSnap.empty) {
+            const batch = adminFirestore.batch();
+            itemSnap.docs.forEach((docSnap) => {
+                batch.update(docSnap.ref, {
+                    category_name: action.to,
+                    updated_at: FieldValue.serverTimestamp(),
+                });
+            });
+            await batch.commit();
+        }
+
+        return {
+            ok: true,
+            message: `Done. Renamed category ${String(sourceCategory.data()?.name || action.from)} to ${action.to}.`,
+            data: {
+                id: sourceCategory.id,
+                name: action.to,
+                updatedItems: itemSnap.size,
             },
         };
     }
@@ -528,6 +781,262 @@ function normalizeAssistantReply(raw: string): string {
     });
 
     return [intro, ...remaining].join('\n');
+}
+
+function extractFirstJsonObject(text: string): Record<string, unknown> | null {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return null;
+
+    const direct = (() => {
+        try {
+            const parsed = JSON.parse(trimmed);
+            return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+        } catch {
+            return null;
+        }
+    })();
+    if (direct) return direct;
+
+    const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i)?.[1] || trimmed.match(/```\s*([\s\S]*?)```/i)?.[1] || '';
+    if (fenced) {
+        try {
+            const parsed = JSON.parse(fenced.trim());
+            return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+        } catch {
+            // fall through
+        }
+    }
+
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+        try {
+            const parsed = JSON.parse(candidate);
+            return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    return null;
+}
+
+function normalizeTextValue(value: unknown): string {
+    return String(value || '').trim();
+}
+
+function coerceParsedAction(raw: unknown): ParsedAction {
+    if (!raw || typeof raw !== 'object') return { type: 'unknown' };
+
+    const input = raw as Record<string, unknown>;
+    const type = normalizeTextValue(input.type).toLowerCase();
+
+    if (type === 'add_table') {
+        const seats = Number(input.seats);
+        const name = normalizeTextValue(input.name);
+        if (!Number.isFinite(seats) || seats <= 0) return { type: 'unknown' };
+        return {
+            type: 'add_table',
+            seats: Math.min(20, Math.max(1, Math.floor(seats))),
+            name: name || undefined,
+        };
+    }
+
+    if (type === 'add_menu_item') {
+        const name = normalizeTextValue(input.name);
+        const category = normalizeTextValue(input.category);
+        const price = Number(input.price);
+        const rawFoodType = normalizeTextValue(input.foodType || input.type).toLowerCase();
+        const imageUrl = normalizeTextValue(input.imageUrl);
+        if (!name || !category || !Number.isFinite(price) || price <= 0) return { type: 'unknown' };
+        return {
+            type: 'add_menu_item',
+            name,
+            price,
+            category,
+            foodType: rawFoodType.includes('non') ? 'non-veg' : 'veg',
+            imageUrl: imageUrl || undefined,
+        };
+    }
+
+    if (type === 'update_menu_item_price') {
+        const name = normalizeTextValue(input.name);
+        const price = Number(input.price);
+        if (!name || !Number.isFinite(price) || price <= 0) return { type: 'unknown' };
+        return {
+            type: 'update_menu_item_price',
+            name,
+            price,
+        };
+    }
+
+    if (type === 'toggle_menu_item_availability') {
+        const name = normalizeTextValue(input.name);
+        const available = Boolean(input.available);
+        if (!name) return { type: 'unknown' };
+        return {
+            type: 'toggle_menu_item_availability',
+            name,
+            available,
+        };
+    }
+
+    if (type === 'delete_menu_item') {
+        const name = normalizeTextValue(input.name);
+        if (!name) return { type: 'unknown' };
+        return {
+            type: 'delete_menu_item',
+            name,
+        };
+    }
+
+    if (type === 'add_category') {
+        const name = normalizeTextValue(input.name);
+        if (!name) return { type: 'unknown' };
+        return {
+            type: 'add_category',
+            name,
+        };
+    }
+
+    if (type === 'rename_category') {
+        const from = normalizeTextValue(input.from);
+        const to = normalizeTextValue(input.to);
+        if (!from || !to || from.toLowerCase() === to.toLowerCase()) return { type: 'unknown' };
+        return {
+            type: 'rename_category',
+            from,
+            to,
+        };
+    }
+
+    if (type === 'arrange_tables_square') {
+        return { type: 'arrange_tables_square' };
+    }
+
+    if (type === 'keep_first_tables') {
+        const count = Number(input.count);
+        if (!Number.isFinite(count) || count <= 0) return { type: 'unknown' };
+        return {
+            type: 'keep_first_tables',
+            count: Math.min(999, Math.floor(count)),
+        };
+    }
+
+    return { type: 'unknown' };
+}
+
+const ACTION_PLANNER_PROMPT = [
+    'You convert free-form admin instructions into one executable dashboard action JSON.',
+    'Output STRICT JSON only. No markdown.',
+    'Allowed action types: add_table, add_menu_item, update_menu_item_price, toggle_menu_item_availability, delete_menu_item, add_category, rename_category, arrange_tables_square, keep_first_tables, unknown.',
+    'Required shape by type:',
+    '- add_table: {"type":"add_table","seats":number,"name"?:string}',
+    '- add_menu_item: {"type":"add_menu_item","name":string,"price":number,"category":string,"foodType":"veg"|"non-veg","imageUrl"?:string}',
+    '- update_menu_item_price: {"type":"update_menu_item_price","name":string,"price":number}',
+    '- toggle_menu_item_availability: {"type":"toggle_menu_item_availability","name":string,"available":boolean}',
+    '- delete_menu_item: {"type":"delete_menu_item","name":string}',
+    '- add_category: {"type":"add_category","name":string}',
+    '- rename_category: {"type":"rename_category","from":string,"to":string}',
+    '- arrange_tables_square: {"type":"arrange_tables_square"}',
+    '- keep_first_tables: {"type":"keep_first_tables","count":number}',
+    '- unknown: {"type":"unknown"}',
+    'Rules:',
+    '- Infer intent even from messy grammar/typos/Hinglish.',
+    '- If multiple actions are requested, return the first executable action only.',
+    '- If required fields are missing, return unknown.',
+].join('\n');
+
+async function inferActionFromOpenAi(apiKey: string, model: string, latestUserMessage: string): Promise<ParsedAction> {
+    const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+            model,
+            temperature: 0,
+            max_tokens: 220,
+            messages: [
+                { role: 'system', content: ACTION_PLANNER_PROMPT },
+                { role: 'user', content: latestUserMessage.slice(0, 1500) },
+            ],
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`OpenAI action planner failed: ${response.status}`);
+    }
+
+    const data: any = await response.json();
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    const parsed = extractFirstJsonObject(raw);
+    return coerceParsedAction(parsed);
+}
+
+async function inferActionFromGemini(apiKey: string, latestUserMessage: string): Promise<ParsedAction> {
+    for (const modelName of MODEL_CANDIDATES) {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: ACTION_PLANNER_PROMPT }] },
+                    contents: [{ role: 'user', parts: [{ text: latestUserMessage.slice(0, 1500) }] }],
+                    generationConfig: {
+                        temperature: 0,
+                        maxOutputTokens: 220,
+                        responseMimeType: 'application/json',
+                    },
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                continue;
+            }
+            throw new Error(`Gemini action planner failed: ${response.status}`);
+        }
+
+        const data: any = await response.json();
+        const raw = data?.candidates?.[0]?.content?.parts
+            ?.map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
+            .join('\n')
+            .trim();
+        const parsed = extractFirstJsonObject(raw || '');
+        return coerceParsedAction(parsed);
+    }
+
+    return { type: 'unknown' };
+}
+
+async function inferActionFromAi(latestUserMessage: string, openAiApiKey?: string, openAiModelCandidates?: string[], geminiApiKey?: string): Promise<ParsedAction> {
+    if (openAiApiKey && Array.isArray(openAiModelCandidates) && openAiModelCandidates.length > 0) {
+        for (const candidateModel of openAiModelCandidates) {
+            try {
+                const action = await inferActionFromOpenAi(openAiApiKey, candidateModel, latestUserMessage);
+                if (action.type !== 'unknown') return action;
+            } catch {
+                // Try next model/provider.
+            }
+        }
+    }
+
+    if (geminiApiKey) {
+        try {
+            const action = await inferActionFromGemini(geminiApiKey, latestUserMessage);
+            if (action.type !== 'unknown') return action;
+        } catch {
+            // Non-fatal fallback.
+        }
+    }
+
+    return { type: 'unknown' };
 }
 
 async function requestOpenAiReply(apiKey: string, model: string, messages: ChatMessage[], contextPrompt: string): Promise<ProviderReply> {
@@ -742,7 +1251,11 @@ export async function POST(request: NextRequest) {
         }
 
         const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
-        const parsedAction = parseActionFromText(latestUserMessage);
+        let parsedAction = parseActionFromText(latestUserMessage);
+        if (parsedAction.type === 'unknown' && looksLikeControlIntent(latestUserMessage)) {
+            parsedAction = await inferActionFromAi(latestUserMessage, openAiApiKey, openAiModelCandidates, geminiApiKey);
+        }
+
         if (parsedAction.type !== 'unknown') {
             const actionResult = await executeAction(parsedAction, auth);
             if (actionResult) {
@@ -761,7 +1274,7 @@ export async function POST(request: NextRequest) {
         if (looksLikeControlIntent(latestUserMessage)) {
             return NextResponse.json({
                 reply:
-                    'I can execute that right away. Try: "add table 4 seats", "arrange tables in a square", "keep only first 10 tables, remove all rest", or "add menu item name=Margherita Pizza, price=299, category=Pizza, type=veg".',
+                    'I can execute that right away, including free-form instructions. Try: "make paneer tikka unavailable", "change margherita price to 349", "rename category mains to chef specials", "arrange all tables in square", or "keep only first 10 tables".',
                 usage: currentUsage,
                 action: {
                     type: 'clarification',

@@ -10,7 +10,7 @@ const SESSION_KEY = 'nexresto_nexo_support_chat_v1';
 
 const STARTER_MESSAGE = {
     role: 'assistant',
-    content: 'Hi, I am Nexo. I can help with operations, growth, and technical issues across your dashboard.\n- I can also execute actions. Example: "add table 4 seats", "arrange tables in a square", or "add menu item name=Margherita Pizza, price=299, category=Pizza, type=veg".',
+    content: 'Hi, I am Nexo. I can help with operations, growth, and technical issues across your dashboard.\n- You can type naturally in any style and I will execute supported changes. Example: "please make paneer tikka unavailable", "change margherita price to 349", "arrange all tables in square", or "add menu item name=Margherita Pizza, price=299, category=Pizza, type=veg".',
 };
 
 function toUsageState(payload) {
@@ -365,7 +365,7 @@ export default function GeminiSupportChat() {
                                     <input
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
-                                        placeholder="Ask or command: add table 4 seats | arrange tables in a square | add menu item..."
+                                        placeholder="Type naturally: make paneer tikka unavailable, change margherita price to 349, add table for 4..."
                                         className="flex-1 h-10 rounded-xl border border-white/15 bg-slate-950/40 px-3 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-slate-500"
                                     />
                                     <button
