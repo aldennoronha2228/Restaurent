@@ -109,14 +109,28 @@ function getDailyLimit(tier: AiTier): number {
     return tier === 'pro' ? 30 : 5;
 }
 
-function getTodayYmdUtc(): string {
-    return new Date().toISOString().slice(0, 10);
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function getTodayYmdIst(): string {
+    const istNow = new Date(Date.now() + IST_OFFSET_MS);
+    const year = istNow.getUTCFullYear();
+    const month = String(istNow.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(istNow.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
-function getNextUtcMidnightIso(): string {
-    const now = new Date();
-    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
-    return next.toISOString();
+function getNextIstMidnightIso(): string {
+    const istNow = new Date(Date.now() + IST_OFFSET_MS);
+    const nextIstMidnightUtcBased = Date.UTC(
+        istNow.getUTCFullYear(),
+        istNow.getUTCMonth(),
+        istNow.getUTCDate() + 1,
+        0,
+        0,
+        0,
+        0,
+    );
+    return new Date(nextIstMidnightUtcBased - IST_OFFSET_MS).toISOString();
 }
 
 function toNonNegativeInt(value: unknown): number {
@@ -133,7 +147,7 @@ function buildUsage(tier: AiTier, used: number): AiUsage {
         limit,
         remaining: Math.max(0, limit - used),
         isLimitReached: used >= limit,
-        resetsAt: getNextUtcMidnightIso(),
+        resetsAt: getNextIstMidnightIso(),
     };
 }
 
@@ -1211,7 +1225,7 @@ export async function POST(request: NextRequest) {
         const restaurantData = restaurantSnap.data() || {};
         const usageData = (restaurantData as any).usage || {};
         const tier = resolveAiTier((restaurantData as any).subscription_tier);
-        const todayYmd = getTodayYmdUtc();
+        const todayYmd = getTodayYmdIst();
         let dailyAiCount = toNonNegativeInt(usageData.dailyAiCount);
         const dailyAiDate = String(usageData.dailyAiDate || '');
 
