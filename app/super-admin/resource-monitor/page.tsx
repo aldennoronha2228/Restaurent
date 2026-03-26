@@ -90,7 +90,7 @@ export default function ResourceMonitorPage() {
                     db_writes: Math.max(0, row.db_writes),
                     bandwidth_used_bytes: Math.max(0, row.bandwidth_used_mb) * 1024 * 1024,
                     bandwidth_limit_bytes: Math.max(0, row.bandwidth_limit_mb) * 1024 * 1024,
-                    daily_ai_count: 0,
+                    daily_ai_count: Math.max(0, (row as any).daily_ai_count || 0),
                     daily_ai_limit: resolvedDailyTier === 'pro' ? 30 : 5,
                     daily_ai_tier: resolvedDailyTier,
                 };

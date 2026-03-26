@@ -73,6 +73,7 @@ export interface ResourceMonitorRow {
     db_writes: number;
     bandwidth_used_mb: number;
     bandwidth_limit_mb: number;
+    daily_ai_count: number;
 }
 
 export interface ResourceMonitorSummary {
@@ -904,24 +905,49 @@ async function getStorageUsageForRestaurant(restaurantId: string): Promise<numbe
     try {
         const apps = getApps();
         if (apps.length === 0) return null;
+        const app = apps[0];
+        const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || app.options.projectId || '';
 
-        const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-        if (!bucketName) return null;
+        const normalizeBucketName = (value: unknown): string => {
+            if (typeof value !== 'string') return '';
+            return value
+                .trim()
+                .replace(/^gs:\/\//, '')
+                .replace(/\/$/, '');
+        };
 
-        const storage = getStorage(apps[0]);
-        const bucket = storage.bucket(bucketName);
+        const rawCandidates = [
+            process.env.FIREBASE_STORAGE_BUCKET,
+            process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+            typeof app.options.storageBucket === 'string' ? app.options.storageBucket : '',
+            projectId ? `${projectId}.appspot.com` : '',
+            projectId ? `${projectId}.firebasestorage.app` : '',
+        ];
+
+        const bucketCandidates = [...new Set(rawCandidates.map(normalizeBucketName).filter(Boolean))];
+        if (bucketCandidates.length === 0) return null;
+
+        const storage = getStorage(app);
         const candidatePrefixes = [`restaurants/${restaurantId}/`, `${restaurantId}/`];
 
-        for (const prefix of candidatePrefixes) {
-            const [files] = await bucket.getFiles({ prefix });
-            if (files.length === 0) continue;
+        for (const bucketName of bucketCandidates) {
+            try {
+                const bucket = storage.bucket(bucketName);
 
-            let totalBytes = 0;
-            files.forEach((file) => {
-                const size = toNumber(file.metadata?.size);
-                totalBytes += size;
-            });
-            return Math.round((totalBytes / (1024 * 1024)) * 100) / 100;
+                for (const prefix of candidatePrefixes) {
+                    const [files] = await bucket.getFiles({ prefix });
+                    if (files.length === 0) continue;
+
+                    let totalBytes = 0;
+                    files.forEach((file) => {
+                        const size = toNumber(file.metadata?.size);
+                        totalBytes += size;
+                    });
+                    return Math.round((totalBytes / (1024 * 1024)) * 100) / 100;
+                }
+            } catch {
+                // Try next bucket candidate.
+            }
         }
 
         return 0;
@@ -939,16 +965,19 @@ export async function getResourceMonitorData(): Promise<{ rows: ResourceMonitorR
         const d = doc.data();
         const id = doc.id;
 
-        const [usageDocA, usageDocB, usageDocC, calculatedStorageMb] = await Promise.all([
+        const [usageDocA, usageDocB, usageDocC, usageDocLegacy, calculatedStorageMb] = await Promise.all([
             adminFirestore.collection('resource_usage').doc(id).get(),
             adminFirestore.collection('usage').doc(id).get(),
             adminFirestore.collection('restaurants').doc(id).collection('usage').doc(currentMonthKey).get(),
+            adminFirestore.collection('restaurants').doc(id).collection('usage').doc('ai_credits_used').get(),
             getStorageUsageForRestaurant(id),
         ]);
 
         const usageA = usageDocA.exists ? usageDocA.data() || {} : {};
         const usageB = usageDocB.exists ? usageDocB.data() || {} : {};
         const usageC = usageDocC.exists ? usageDocC.data() || {} : {};
+        const usageLegacy = usageDocLegacy.exists ? usageDocLegacy.data() || {} : {};
+        const usageRoot = (d.usage as Record<string, any>) || {};
 
         const storageLimit = toNumber(
             d.storage_limit_mb,
@@ -974,6 +1003,8 @@ export async function getResourceMonitorData(): Promise<{ rows: ResourceMonitorR
 
         const storageUsed = toNumber(
             calculatedStorageMb,
+            usageLegacy.storage_used_mb,
+            usageLegacy.storage_used_bytes ? Number(usageLegacy.storage_used_bytes) / (1024 * 1024) : 0,
             usageA.storage_used_mb,
             usageA.storageMb,
             usageB.storage_used_mb,
@@ -981,6 +1012,9 @@ export async function getResourceMonitorData(): Promise<{ rows: ResourceMonitorR
             d.storage_used_mb,
         );
         const aiCreditsUsed = toNumber(
+            usageLegacy.ai_credits_used,
+            usageRoot.ai_credits_used,
+            usageRoot.dailyAiCount,
             usageA.ai_credits_used,
             usageA.aiCreditsUsed,
             usageB.ai_credits_used,
@@ -988,25 +1022,40 @@ export async function getResourceMonitorData(): Promise<{ rows: ResourceMonitorR
             d.ai_credits_used,
         );
         const dbReads = toNumber(
+            usageLegacy.db_reads,
+            usageLegacy.firestore_reads,
             usageA.db_reads,
             usageA.firestore_reads,
             usageB.db_reads,
             usageC.db_reads,
+            usageRoot.db_reads,
             d.db_reads,
         );
         const dbWrites = toNumber(
+            usageLegacy.db_writes,
+            usageLegacy.firestore_writes,
             usageA.db_writes,
             usageA.firestore_writes,
             usageB.db_writes,
             usageC.db_writes,
+            usageRoot.db_writes,
             d.db_writes,
         );
         const bandwidthUsed = toNumber(
+            usageLegacy.bandwidth_used_mb,
+            usageLegacy.bandwidth_used_bytes ? Number(usageLegacy.bandwidth_used_bytes) / (1024 * 1024) : 0,
             usageA.bandwidth_used_mb,
             usageA.bandwidthMb,
             usageB.bandwidth_used_mb,
             usageC.bandwidth_used_mb,
+            usageRoot.bandwidth_used_mb,
             d.bandwidth_used_mb,
+        );
+        const dailyAiCount = toNumber(
+            usageRoot.dailyAiCount,
+            usageRoot.daily_ai_count,
+            usageLegacy.dailyAiCount,
+            usageLegacy.daily_ai_count,
         );
 
         return {
@@ -1023,6 +1072,7 @@ export async function getResourceMonitorData(): Promise<{ rows: ResourceMonitorR
             db_writes: dbWrites,
             bandwidth_used_mb: bandwidthUsed,
             bandwidth_limit_mb: bandwidthLimit,
+            daily_ai_count: dailyAiCount,
         };
     }));
 
