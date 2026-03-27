@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase-admin';
-
-type Claims = {
-    role?: string;
-    restaurant_id?: string;
-    tenant_id?: string;
-};
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type VisionTable = {
     id: string;
@@ -39,16 +33,12 @@ async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: s
     }
 
     const token = authHeader.slice(7);
-    const decoded = await adminAuth.verifyIdToken(token);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = (user.customClaims || {}) as Claims;
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
+    const authz = await authorizeTenantAccess(token, restaurantId, 'manage');
+    if (!authz) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    return { uid: user.uid };
+    return { uid: authz.uid };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -229,9 +219,10 @@ async function analyzeWithOpenAi(apiKey: string, models: string[], dataUrl: stri
             if (fallback.length > 0) {
                 return { tables: fallback, model };
             }
-        } catch (error: any) {
-            const status = Number(error?.status || 0);
-            lastError = `${model}: ${status || 500} ${String(error?.details || error?.message || '').slice(0, 220)}`;
+        } catch (error: unknown) {
+            const errObj = error as { status?: unknown; details?: unknown; message?: unknown };
+            const status = Number(errObj?.status || 0);
+            lastError = `${model}: ${status || 500} ${String(errObj?.details || errObj?.message || '').slice(0, 220)}`;
             if (status === 400 || status === 404) continue;
             throw new Error(lastError);
         }
@@ -354,7 +345,7 @@ export async function POST(request: NextRequest) {
             count: result.tables.length,
             quality: 'strict',
         });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Image analysis failed' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Image analysis failed' }, { status: 500 });
     }
 }

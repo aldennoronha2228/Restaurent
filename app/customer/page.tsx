@@ -5,14 +5,13 @@ import { useCart } from '@/context/CartContext';
 import type { MenuItem as CartMenuItem } from '@/context/CartContext';
 import { CartDrawer } from '@/components/customer/CartDrawer';
 import { GourmetCatalogLayout } from '@/components/customer/GourmetCatalogLayout';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { db, tenantAuth, adminAuth } from '@/lib/firebase';
-import { collection, query, where, orderBy, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, onSnapshot } from 'firebase/firestore';
 import { applyAvailabilityOverrides, seedAvailabilityMap } from '@/lib/menuAvailability';
-
-// Fallback static items in case Firebase isn't set up yet
-import { menuItems as staticItems, categories as staticCategories } from '@/data/menuData';
+import { getTenantTableStorageKey } from '@/lib/client/storage/tenantKeys';
 
 // Firestore item shape → CartMenuItem shape
 interface FirestoreItem {
@@ -57,8 +56,6 @@ const DEFAULT_BRANDING: CustomerBranding = {
     featuredImages: [],
 };
 
-const LAST_TABLE_STORAGE_KEY = 'nexresto:last-table-id';
-
 function normalizeBranding(raw: any): CustomerBranding {
     const overlay = Number(raw?.heroOverlayOpacity);
     const featuredImages = Array.isArray(raw?.featuredImages)
@@ -83,8 +80,7 @@ function normalizeBranding(raw: any): CustomerBranding {
 
 function toCartItem(
     f: FirestoreItem,
-    categoryName: string,
-    fallback?: CartMenuItem
+    categoryName: string
 ): CartMenuItem & { available: boolean; type?: 'veg' | 'non-veg' } {
     const normalizedType = String(f.type || '').toLowerCase();
     const type = normalizedType === 'non-veg' || normalizedType === 'nonveg'
@@ -96,10 +92,10 @@ function toCartItem(
     return {
         id: f.id,
         name: f.name,
-        description: fallback?.description ?? '',
+        description: '',
         price: f.price,
-        image: f.image_url ?? fallback?.image ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
-        category: categoryName ?? fallback?.category ?? 'Other',
+        image: f.image_url ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
+        category: categoryName,
         available: f.available ?? true,
         type,
     };
@@ -110,6 +106,7 @@ function CustomerMenuContent() {
     const [menuItems, setMenuItems] = useState<(CartMenuItem & { available: boolean })[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [retryNonce, setRetryNonce] = useState(0);
     const { addToCart, setIsCartOpen, totalItems, totalPrice } = useCart();
     const router = useRouter();
@@ -138,13 +135,20 @@ function CustomerMenuContent() {
         const normalized = (tableIdFromQuery || '').trim();
         if (normalized) {
             setResolvedTableId(normalized);
-            localStorage.setItem(LAST_TABLE_STORAGE_KEY, normalized);
+            if (restaurantId) {
+                localStorage.setItem(getTenantTableStorageKey(restaurantId), normalized);
+            }
             return;
         }
 
-        const remembered = (localStorage.getItem(LAST_TABLE_STORAGE_KEY) || '').trim();
+        if (!restaurantId) {
+            setResolvedTableId('');
+            return;
+        }
+
+        const remembered = (localStorage.getItem(getTenantTableStorageKey(restaurantId)) || '').trim();
         setResolvedTableId(remembered);
-    }, [tableIdFromQuery]);
+    }, [tableIdFromQuery, restaurantId]);
 
     const refreshTokens = async () => {
         const jobs: Promise<unknown>[] = [];
@@ -216,17 +220,23 @@ function CustomerMenuContent() {
         return () => window.removeEventListener('message', handler);
     }, [isPreviewMode]);
 
-    // Fetch live menu from Firestore; fall back to static data if not configured
+    // Fetch tenant-scoped menu from Firestore. Fail closed on errors.
     useEffect(() => {
         let cancelled = false;
         const resolvedTenantId = restaurantId;
 
         async function loadMenu() {
+            if (!cancelled) {
+                setLoading(true);
+                setFetchError(null);
+            }
+
             try {
                 if (!resolvedTenantId) {
                     if (!cancelled) {
                         setMenuItems([]);
                         setCategories(['All']);
+                        setFetchError('Missing restaurant context. Please use a valid restaurant link.');
                         setLoading(false);
                     }
                     return;
@@ -285,41 +295,38 @@ function CustomerMenuContent() {
 
                 if (cancelled) return;
 
-                // Enrich with static descriptions/images where Firestore row has none
                 const normalizedCatNames = new Set(catNames.map((c) => c.trim().toLowerCase()));
 
                 const enriched = items.map((f: FirestoreItem) => {
-                    const fallback = staticItems.find(
-                        si => si.name.toLowerCase() === f.name.toLowerCase()
-                    );
                     const categoryFromId = f.category_id ? catMap.get(f.category_id) : '';
                     const categoryFromName = String(f.category_name || '').trim();
                     const categoryFromLegacy = String(f.category || '').trim();
 
-                    // Prefer explicit category_id mapping; only accept name/legacy if it matches an existing preset category.
+                    // Only map items to categories that exist for this tenant.
                     const categoryName = (
                         categoryFromId ||
                         (normalizedCatNames.has(categoryFromName.toLowerCase()) ? categoryFromName : '') ||
-                        (normalizedCatNames.has(categoryFromLegacy.toLowerCase()) ? categoryFromLegacy : '') ||
-                        fallback?.category ||
-                        catNames[0] ||
-                        'Other'
+                        (normalizedCatNames.has(categoryFromLegacy.toLowerCase()) ? categoryFromLegacy : '')
                     );
-                    return toCartItem(f, categoryName, fallback);
-                });
+                    if (!categoryName) {
+                        return null;
+                    }
+                    return toCartItem(f, categoryName);
+                }).filter(Boolean) as (CartMenuItem & { available: boolean })[];
 
                 // Seed localStorage so overrides are initialised from DB state
                 seedAvailabilityMap(enriched.map(i => ({ id: i.id, available: i.available })), tenantId);
                 // Apply any manual overrides saved by the dashboard
                 setMenuItems(applyAvailabilityOverrides(enriched, tenantId));
                 setCategories(['All', ...catNames]);
+                setFetchError(null);
             } catch (err) {
                 console.error('Failed to load menu from Firestore:', err);
-                // Firestore not available — use static fallback + localStorage overrides
+                // Fail closed: do not show global/shared fallback menu data.
                 if (cancelled) return;
-                const base = staticItems.map(i => ({ ...i, available: true }));
-                setMenuItems(applyAvailabilityOverrides(base, resolvedTenantId || ''));
-                setCategories(staticCategories);
+                setMenuItems([]);
+                setCategories(['All']);
+                setFetchError('Could not load this restaurant menu. Please retry.');
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -372,6 +379,7 @@ function CustomerMenuContent() {
                     return;
                 }
                 console.error('[CustomerMenu] snapshot error:', error);
+                setFetchError('Live updates disconnected. Please retry.');
             }
         );
 
@@ -382,6 +390,23 @@ function CustomerMenuContent() {
 
     return (
         <div className="min-h-screen">
+            {fetchError && (
+                <div className="mx-auto max-w-6xl px-4 pt-4">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                        <div className="flex items-center gap-2">
+                            <AlertCircle className="h-4 w-4" />
+                            <span>{fetchError}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setRetryNonce((n) => n + 1)}
+                            className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                        >
+                            <RefreshCw className="h-3.5 w-3.5" /> Retry
+                        </button>
+                    </div>
+                </div>
+            )}
             <GourmetCatalogLayout
                 branding={effectiveBranding}
                 categories={categories}

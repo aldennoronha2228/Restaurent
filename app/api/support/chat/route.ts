@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type ChatMessage = {
     role: 'user' | 'assistant';
@@ -24,12 +25,6 @@ type DashboardContext = {
         keyAreas?: string[];
     };
     generatedAt?: string;
-};
-
-type Claims = {
-    role?: string;
-    restaurant_id?: string;
-    tenant_id?: string;
 };
 
 type AiTier = 'free' | 'pro';
@@ -162,19 +157,15 @@ async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: s
     }
 
     const token = authHeader.slice(7);
-    const decoded = await adminAuth.verifyIdToken(token);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = (user.customClaims || {}) as Claims;
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
+    const authz = await authorizeTenantAccess(token, restaurantId, 'manage');
+    if (!authz) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     return {
         restaurantId,
-        uid: user.uid,
-        role: String(claims.role || ''),
+        uid: authz.uid,
+        role: authz.role,
     };
 }
 

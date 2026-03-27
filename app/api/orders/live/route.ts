@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type OrderStatus = 'new' | 'preparing' | 'done' | 'paid' | 'cancelled';
+
+type TimestampLike = { toDate: () => Date };
+
+function hasToDate(value: unknown): value is TimestampLike {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as { toDate?: unknown };
+    return typeof candidate.toDate === 'function';
+}
+
+function toDateValue(value: unknown): Date {
+    if (hasToDate(value)) {
+        return value.toDate();
+    }
+    return new Date(String(value || Date.now()));
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
+}
 
 function formatTimeAgo(dateInput: unknown): string {
     const date = dateInput instanceof Date
@@ -31,13 +51,11 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const decoded = await adminAuth.verifyIdToken(idToken);
-        const user = await adminAuth.getUser(decoded.uid);
-        const claims = user.customClaims || {};
-
-        const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-        if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+        const authz = await authorizeTenantAccess(idToken, restaurantId, 'read');
+        if (!authz) {
+            return NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to read orders for restaurantId=${restaurantId}.`,
+            }, { status: 403 });
         }
 
         const ordersSnap = await adminFirestore
@@ -59,9 +77,7 @@ export async function GET(request: NextRequest) {
                 };
             });
 
-            const createdAtValue = (data.created_at as any)?.toDate?.()
-                ? (data.created_at as any).toDate()
-                : new Date(String(data.created_at || Date.now()));
+            const createdAtValue = toDateValue(data.created_at);
 
             return {
                 id: doc.id,
@@ -76,7 +92,7 @@ export async function GET(request: NextRequest) {
         }).filter((order) => ['new', 'preparing', 'done'].includes(order.status));
 
         return NextResponse.json({ orders });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Invalid session' }, { status: 401 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Invalid session') }, { status: 401 });
     }
 }

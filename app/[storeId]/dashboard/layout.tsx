@@ -145,7 +145,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         subscriptionDaysRemaining,
         isImpersonating,
     } = useAuth();
-    const { storeId: activeStoreId, isSuperAdmin, subscriptionTier, tenantName } = useRestaurant();
+    const { sessionTenantId, isSuperAdmin, subscriptionTier, tenantName } = useRestaurant();
     const urlStoreId = params?.storeId || '';
     const [showConflict, setShowConflict] = useState(false);
     const [displayTenantName, setDisplayTenantName] = useState<string>('NexResto');
@@ -197,14 +197,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             userRole &&
             userRole !== 'super_admin' &&
             urlStoreId &&
-            activeStoreId &&
-            urlStoreId !== activeStoreId
+            sessionTenantId &&
+            urlStoreId !== sessionTenantId
         ) {
             setShowConflict(true);
         } else {
             setShowConflict(false);
         }
-    }, [activeStoreId, urlStoreId, loading, userRole, isGodMode]);
+    }, [sessionTenantId, urlStoreId, loading, userRole, isGodMode]);
 
     // Check if user has Pro tier (strict): do not infer Pro access from impersonation.
     const isPro = isGodMode || isSuperAdmin || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
@@ -600,7 +600,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     </div>
                                     <div>
                                         <p className="text-slate-500 text-xs">Restaurant ID</p>
-                                        <p className="text-blue-300 font-mono text-xs truncate">{activeStoreId ?? '—'}</p>
+                                        <p className="text-blue-300 font-mono text-xs truncate">{sessionTenantId ?? '—'}</p>
                                     </div>
                                     <div>
                                         <p className="text-slate-500 text-xs">Attempted URL</p>
@@ -610,13 +610,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </div>
                             {/* Actions */}
                             <div className="space-y-3">
-                                {activeStoreId && (
+                                {sessionTenantId && (
                                     <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                                        onClick={() => router.replace(`/${activeStoreId}/dashboard/orders`)}
+                                        onClick={() => router.replace(`/${sessionTenantId}/dashboard/orders`)}
                                         className="w-full h-12 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-500/25 transition-all"
                                     >
                                         <Shield className="w-4 h-4" />
-                                        Go to My Restaurant ({tenantName ?? activeStoreId})
+                                        Go to My Restaurant ({tenantName ?? sessionTenantId})
                                     </motion.button>
                                 )}
                                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}

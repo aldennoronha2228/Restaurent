@@ -84,7 +84,9 @@ service cloud.firestore {
       
       // ─── Menu Items Sub-collection ────────────────────────────────────
       match /menu_items/{itemId} {
-        allow read: if true; // Public for customer menu
+        // Public read for unauthenticated customer menu access.
+        // Authenticated tenant users are restricted to their own restaurant scope.
+        allow read: if !isAuthenticated() || isSuperAdmin() || belongsToRestaurant(resId);
         allow create, update, delete: if isSuperAdmin() || isOwnerOrAdmin(resId);
       }
       
@@ -125,7 +127,9 @@ service cloud.firestore {
       
       // ─── Categories Sub-collection ────────────────────────────────────
       match /categories/{catId} {
-        allow read: if true; // Public for customer menu
+        // Public read for unauthenticated customer menu access.
+        // Authenticated tenant users are restricted to their own restaurant scope.
+        allow read: if !isAuthenticated() || isSuperAdmin() || belongsToRestaurant(resId);
         allow create, update, delete: if isSuperAdmin() || isOwnerOrAdmin(resId);
       }
       

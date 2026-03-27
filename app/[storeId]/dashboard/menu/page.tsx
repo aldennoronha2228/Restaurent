@@ -71,6 +71,7 @@ function ExcelUploadModal({ open, onClose, tenantId, onImportComplete }: { open:
             const formData = new FormData();
             formData.append('file', file);
             formData.append('tenantId', tenantId);
+            formData.append('restaurantId', tenantId);
 
             const res = await fetch('/api/menu/import', {
                 method: 'POST',

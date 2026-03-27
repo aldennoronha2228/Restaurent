@@ -6,6 +6,7 @@ import { X, ShoppingBag, Trash2 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { QuantitySelector } from '@/components/customer/QuantitySelector';
 import { useRouter } from 'next/navigation';
+import { getTenantTableStorageKey } from '@/lib/client/storage/tenantKeys';
 
 const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -13,7 +14,10 @@ const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
 }).format(value);
 
-const LAST_TABLE_STORAGE_KEY = 'nexresto:last-table-id';
+function getScopedTableStorageKey(restaurantId?: string): string | null {
+    if (!restaurantId) return null;
+    return getTenantTableStorageKey(restaurantId);
+}
 
 function normalizeTableValue(value: string) {
     return value.trim();
@@ -27,21 +31,27 @@ export const CartDrawer: React.FC<{ tableId?: string; restaurantId?: string }> =
     // Sync state if URL prop changes
     React.useEffect(() => {
         const fromUrl = normalizeTableValue(tableId || '');
+        const storageKey = getScopedTableStorageKey(restaurantId);
         if (fromUrl) {
             setManualTable(fromUrl);
-            localStorage.setItem(LAST_TABLE_STORAGE_KEY, fromUrl);
+            if (storageKey) {
+                localStorage.setItem(storageKey, fromUrl);
+            }
             return;
         }
 
-        const saved = normalizeTableValue(localStorage.getItem(LAST_TABLE_STORAGE_KEY) || '');
+        const saved = storageKey
+            ? normalizeTableValue(localStorage.getItem(storageKey) || '')
+            : '';
         setManualTable(saved);
-    }, [tableId]);
+    }, [tableId, restaurantId]);
 
     const handleCheckout = () => {
         setIsCartOpen(false);
         const finalTable = normalizeTableValue(manualTable);
-        if (finalTable) {
-            localStorage.setItem(LAST_TABLE_STORAGE_KEY, finalTable);
+        const storageKey = getScopedTableStorageKey(restaurantId);
+        if (finalTable && storageKey) {
+            localStorage.setItem(storageKey, finalTable);
         }
         const params = new URLSearchParams();
         if (finalTable) params.set('table', finalTable);

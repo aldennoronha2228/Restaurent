@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, ShoppingBag, UtensilsCrossed, QrCode, History, ArrowRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
-import { useRestaurant } from '@/hooks/useRestaurant';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SearchResult {
@@ -48,8 +47,6 @@ export function GlobalSearch() {
     const router = useRouter();
     const params = useParams<{ storeId: string }>();
     const urlStoreId = params?.storeId || '';
-    const { storeId: tenantId } = useRestaurant();
-
     const getActiveToken = useCallback(async (): Promise<string> => {
         if (adminAuth.currentUser) return adminAuth.currentUser.getIdToken(true);
         if (tenantAuth.currentUser) return tenantAuth.currentUser.getIdToken(true);
@@ -76,7 +73,7 @@ export function GlobalSearch() {
         const trimmed = q.trim();
         const lowerTrimmed = trimmed.toLowerCase();
 
-        if (!trimmed || !tenantId) {
+        if (!trimmed || !urlStoreId) {
             setResults([]);
             setSearching(false);
             return;
@@ -86,7 +83,7 @@ export function GlobalSearch() {
 
         const executeQuery = async () => {
             const token = await getActiveToken();
-            const response = await fetch(`/api/search/global?restaurantId=${encodeURIComponent(tenantId)}&q=${encodeURIComponent(trimmed)}`, {
+            const response = await fetch(`/api/search/global?restaurantId=${encodeURIComponent(urlStoreId)}&q=${encodeURIComponent(trimmed)}`, {
                 headers: { Authorization: `Bearer ${token}` },
                 cache: 'no-store',
             });
@@ -156,7 +153,7 @@ export function GlobalSearch() {
         } finally {
             setSearching(false);
         }
-    }, [tenantId, urlStoreId, refreshTokens, getActiveToken]);
+    }, [urlStoreId, refreshTokens, getActiveToken]);
 
     // ── Debounce ──────────────────────────────────────────────────────────────
     useEffect(() => {

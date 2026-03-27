@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type InventoryStatus = 'good' | 'low' | 'critical';
 
@@ -14,6 +15,10 @@ type InventoryRecord = {
     createdAt: string;
     updatedAt: string;
 };
+
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
+}
 
 function toStatus(quantity: number, reorderLevel: number): InventoryStatus {
     if (quantity <= Math.max(0, reorderLevel * 0.5)) return 'critical';
@@ -31,31 +36,23 @@ function sanitizeText(value: unknown, fallback = ''): string {
     return String(value ?? fallback).trim();
 }
 
-async function authorize(request: NextRequest, restaurantId: string) {
+async function authorize(request: NextRequest, restaurantId: string, level: 'read' | 'manage') {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
     }
 
     const idToken = authHeader.replace('Bearer ', '');
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = user.customClaims || {};
-
-    const role = String(claims.role || '');
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    const isSuperAdmin = role === 'super_admin';
-    const hasTenantAccess = isSuperAdmin || claimRestaurantId === restaurantId;
-
-    if (!hasTenantAccess) {
-        return { error: NextResponse.json({ error: 'Access denied' }, { status: 403 }) };
+    const authz = await authorizeTenantAccess(idToken, restaurantId, level);
+    if (!authz) {
+        return {
+            error: NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to access inventory for restaurantId=${restaurantId}.`,
+            }, { status: 403 })
+        };
     }
 
-    return {
-        decoded,
-        role,
-        canManage: isSuperAdmin || role === 'owner' || role === 'admin',
-    };
+    return { authz };
 }
 
 function parseRestaurantId(request: NextRequest): string {
@@ -69,7 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const authz = await authorize(request, restaurantId);
+        const authz = await authorize(request, restaurantId, 'read');
         if ('error' in authz) return authz.error;
 
         const snap = await adminFirestore
@@ -79,8 +76,8 @@ export async function GET(request: NextRequest) {
 
         const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         return NextResponse.json({ items });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Failed to fetch inventory' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to fetch inventory') }, { status: 500 });
     }
 }
 
@@ -92,11 +89,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'restaurantId required' }, { status: 400 });
         }
 
-        const authz = await authorize(request, restaurantId);
+        const authz = await authorize(request, restaurantId, 'manage');
         if ('error' in authz) return authz.error;
-        if (!authz.canManage) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-        }
 
         const name = sanitizeText(body?.item?.name);
         const supplier = sanitizeText(body?.item?.supplier);
@@ -127,8 +121,8 @@ export async function POST(request: NextRequest) {
             .add(payload);
 
         return NextResponse.json({ item: { id: ref.id, ...payload } });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Failed to create item' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to create item') }, { status: 500 });
     }
 }
 
@@ -141,11 +135,8 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'restaurantId and itemId required' }, { status: 400 });
         }
 
-        const authz = await authorize(request, restaurantId);
+        const authz = await authorize(request, restaurantId, 'manage');
         if ('error' in authz) return authz.error;
-        if (!authz.canManage) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-        }
 
         const name = sanitizeText(body?.item?.name);
         const supplier = sanitizeText(body?.item?.supplier);
@@ -174,8 +165,8 @@ export async function PUT(request: NextRequest) {
 
         const snap = await ref.get();
         return NextResponse.json({ item: { id: snap.id, ...snap.data() } });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Failed to update item' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to update item') }, { status: 500 });
     }
 }
 
@@ -188,15 +179,12 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
-        const authz = await authorize(request, restaurantId);
+        const authz = await authorize(request, restaurantId, 'manage');
         if ('error' in authz) return authz.error;
-        if (!authz.canManage) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-        }
 
         await adminFirestore.doc(`restaurants/${restaurantId}/inventory_items/${itemId}`).delete();
         return NextResponse.json({ ok: true });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Failed to delete item' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to delete item') }, { status: 500 });
     }
 }

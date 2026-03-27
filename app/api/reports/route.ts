@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
 import { generateDailyReport, isProTier } from '@/lib/reports';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
+
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
+}
 
 /**
  * GET /api/reports  (Firebase)
@@ -25,39 +30,27 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'restaurantId required' }, { status: 400 });
     }
 
-    // Verify user token
-    let decodedToken;
     try {
-        decodedToken = await adminAuth.verifyIdToken(idToken);
-    } catch {
-        return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
-    }
+        const authz = await authorizeTenantAccess(idToken, restaurantId, 'read');
+        if (!authz) {
+            return NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to read reports for restaurantId=${restaurantId}.`,
+            }, { status: 403 });
+        }
 
-    const uid = decodedToken.uid;
-    const userRecord = await adminAuth.getUser(uid);
-    const claims = userRecord.customClaims || {};
+        // Check subscription tier
+        const restDoc = await adminFirestore.doc(`restaurants/${restaurantId}`).get();
+        const restData = restDoc.data();
+        const isPro = isProTier(restData?.subscription_tier);
 
-    // Verify user belongs to this restaurant (or is super_admin)
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
+        if (!isPro) {
+            return NextResponse.json({
+                error: 'Reports are a Pro feature',
+                upgrade: true
+            }, { status: 403 });
+        }
 
-    // Check subscription tier
-    const restDoc = await adminFirestore.doc(`restaurants/${restaurantId}`).get();
-    const restData = restDoc.data();
-
-    const isPro = isProTier(restData?.subscription_tier);
-
-    if (!isPro) {
-        return NextResponse.json({
-            error: 'Reports are a Pro feature',
-            upgrade: true
-        }, { status: 403 });
-    }
-
-    // Fetch reports from analytics sub-collection
-    try {
+        // Fetch reports from analytics sub-collection
         let query = adminFirestore
             .collection(`restaurants/${restaurantId}/analytics`)
             .orderBy('report_date', 'desc')
@@ -77,8 +70,8 @@ export async function GET(request: NextRequest) {
         }));
 
         return NextResponse.json({ reports });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to load reports') }, { status: 500 });
     }
 }
 
@@ -101,41 +94,33 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'restaurantId required' }, { status: 400 });
     }
 
-    // Verify user token
-    let decodedToken;
     try {
-        decodedToken = await adminAuth.verifyIdToken(idToken);
-    } catch {
-        return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
-    }
+        const authz = await authorizeTenantAccess(idToken, restaurantId, 'manage');
+        if (!authz) {
+            return NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to generate reports for restaurantId=${restaurantId}.`,
+            }, { status: 403 });
+        }
 
-    const uid = decodedToken.uid;
-    const userRecord = await adminAuth.getUser(uid);
-    const claims = userRecord.customClaims || {};
+        // Check subscription tier
+        const restDoc = await adminFirestore.doc(`restaurants/${restaurantId}`).get();
+        const restData = restDoc.data();
+        const isPro = isProTier(restData?.subscription_tier);
 
-    // Verify user belongs to this restaurant
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
+        if (!isPro) {
+            return NextResponse.json({
+                error: 'Reports are a Pro feature',
+                upgrade: true
+            }, { status: 403 });
+        }
 
-    // Check subscription tier
-    const restDoc = await adminFirestore.doc(`restaurants/${restaurantId}`).get();
-    const restData = restDoc.data();
+        const { report, restaurantName } = await generateDailyReport(restaurantId, date);
 
-    const isPro = isProTier(restData?.subscription_tier);
-
-    if (!isPro) {
         return NextResponse.json({
-            error: 'Reports are a Pro feature',
-            upgrade: true
-        }, { status: 403 });
+            report,
+            restaurantName,
+        });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to generate report') }, { status: 500 });
     }
-
-    const { report, restaurantName } = await generateDailyReport(restaurantId, date);
-
-    return NextResponse.json({
-        report,
-        restaurantName,
-    });
 }

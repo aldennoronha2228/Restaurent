@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type OrderStatus = 'new' | 'preparing' | 'done' | 'paid' | 'cancelled';
 
 function isValidStatus(status: unknown): status is OrderStatus {
     return typeof status === 'string' && ['new', 'preparing', 'done', 'paid', 'cancelled'].includes(status);
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export async function POST(request: NextRequest) {
@@ -26,13 +31,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'restaurantId and orderId are required' }, { status: 400 });
         }
 
-        const decoded = await adminAuth.verifyIdToken(idToken);
-        const user = await adminAuth.getUser(decoded.uid);
-        const claims = user.customClaims || {};
-
-        const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-        if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+        const authz = await authorizeTenantAccess(idToken, restaurantId, 'manage');
+        if (!authz) {
+            return NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to manage orders for restaurantId=${restaurantId}.`,
+            }, { status: 403 });
         }
 
         const orderRef = adminFirestore.doc(`restaurants/${restaurantId}/orders/${orderId}`);
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Request failed' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Request failed') }, { status: 500 });
     }
 }

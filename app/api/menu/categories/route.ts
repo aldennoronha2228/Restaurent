@@ -1,35 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
-function isManagerRole(role: unknown): boolean {
-    const value = String(role || '').toLowerCase();
-    return value === 'owner' || value === 'admin' || value === 'super_admin';
-}
-
-async function authorizeManageCategories(idToken: string, restaurantId: string): Promise<{ uid: string; role: string } | null> {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    const userRecord = await adminAuth.getUser(decoded.uid);
-    const claims = userRecord.customClaims || {};
-
-    const role = String(claims.role || '');
-    if (role === 'super_admin') {
-        return { uid: decoded.uid, role };
-    }
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claimRestaurantId === restaurantId && isManagerRole(role)) {
-        return { uid: decoded.uid, role };
-    }
-
-    // Fallback to staff doc role check when claims are stale.
-    const staffDoc = await adminFirestore.doc(`restaurants/${restaurantId}/staff/${decoded.uid}`).get();
-    const staffRole = String(staffDoc.data()?.role || '');
-    if (staffDoc.exists && isManagerRole(staffRole)) {
-        return { uid: decoded.uid, role: staffRole };
-    }
-
-    return null;
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export async function POST(request: NextRequest) {
@@ -49,9 +24,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'restaurantId and name are required' }, { status: 400 });
         }
 
-        const authz = await authorizeManageCategories(idToken, restaurantId);
+        const authz = await authorizeTenantAccess(idToken, restaurantId, 'manage');
         if (!authz) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+            return NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to manage categories for restaurantId=${restaurantId}.`,
+            }, { status: 403 });
         }
 
         const categoriesRef = adminFirestore.collection(`restaurants/${restaurantId}/categories`);
@@ -87,8 +64,8 @@ export async function POST(request: NextRequest) {
                 ...created.data(),
             },
         });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message || 'Failed to create category' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to create category') }, { status: 500 });
     }
 }
 
@@ -108,9 +85,11 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
-        const authz = await authorizeManageCategories(idToken, restaurantId);
+        const authz = await authorizeTenantAccess(idToken, restaurantId, 'manage');
         if (!authz) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+            return NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to manage categories for restaurantId=${restaurantId}.`,
+            }, { status: 403 });
         }
 
         const categoryRef = adminFirestore.doc(`restaurants/${restaurantId}/categories/${categoryId}`);
@@ -157,7 +136,7 @@ export async function DELETE(request: NextRequest) {
             movedItems: menuItemsSnap.size,
             fallbackCategoryId: fallbackCategory.id,
         });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message || 'Failed to delete category' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to delete category') }, { status: 500 });
     }
 }

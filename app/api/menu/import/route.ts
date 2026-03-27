@@ -12,35 +12,10 @@
  */
 
 import { NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import * as XLSX from 'xlsx';
-
-function isManagerRole(role: unknown): boolean {
-    const value = String(role || '').toLowerCase();
-    return value === 'owner' || value === 'admin' || value === 'super_admin';
-}
-
-async function authorizeImport(idToken: string, restaurantId: string): Promise<boolean> {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    const userRecord = await adminAuth.getUser(decoded.uid);
-    const claims = userRecord.customClaims || {};
-
-    const role = String(claims.role || '').toLowerCase();
-    if (role === 'super_admin') {
-        return true;
-    }
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claimRestaurantId === restaurantId && isManagerRole(role)) {
-        return true;
-    }
-
-    // Fallback for stale claims: trust active owner/admin role in staff doc.
-    const staffDoc = await adminFirestore.doc(`restaurants/${restaurantId}/staff/${decoded.uid}`).get();
-    const staffRole = String(staffDoc.data()?.role || '').toLowerCase();
-    return staffDoc.exists && isManagerRole(staffRole);
-}
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 interface ExcelRow {
     Name?: string;
@@ -56,11 +31,15 @@ interface ExcelRow {
     ImageURL?: string;
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export async function POST(request: Request) {
     try {
         const formData = await request.formData();
         const file = formData.get('file') as File | null;
-        const tenantId = String(formData.get('tenantId') || '').trim();
+        const tenantId = String(formData.get('tenantId') || formData.get('restaurantId') || '').trim();
 
         if (!tenantId) {
             return NextResponse.json({ error: 'Tenant ID required' }, { status: 400 });
@@ -74,9 +53,11 @@ export async function POST(request: Request) {
 
         const idToken = authHeader.replace('Bearer ', '');
         try {
-            const allowed = await authorizeImport(idToken, tenantId);
-            if (!allowed) {
-                return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+            const authz = await authorizeTenantAccess(idToken, tenantId, 'manage');
+            if (!authz) {
+                return NextResponse.json({
+                    error: `Forbidden: tenant mismatch. You are not allowed to import menu data for restaurantId=${tenantId}.`,
+                }, { status: 403 });
             }
         } catch {
             return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
@@ -217,8 +198,8 @@ export async function POST(request: Request) {
             ...results,
         });
 
-    } catch (err: any) {
-        console.error('[menu/import] Error:', err);
-        return NextResponse.json({ error: err.message || 'Import failed' }, { status: 500 });
+    } catch (error: unknown) {
+        console.error('[menu/import] Error:', error);
+        return NextResponse.json({ error: errorMessage(error, 'Import failed') }, { status: 500 });
     }
 }

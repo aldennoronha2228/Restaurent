@@ -7,6 +7,7 @@ import { useCart } from '@/context/CartContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { submitOrderToFirestore } from '@/lib/firebase-submit-order';
 import { Suspense } from 'react';
+import { getTenantTableStorageKey } from '@/lib/client/storage/tenantKeys';
 
 const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -14,7 +15,10 @@ const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
 }).format(value);
 
-const LAST_TABLE_STORAGE_KEY = 'nexresto:last-table-id';
+function getScopedTableStorageKey(restaurantId?: string): string | null {
+    if (!restaurantId) return null;
+    return getTenantTableStorageKey(restaurantId);
+}
 
 function OrderSummaryContent() {
     const { cart, totalPrice, clearCart, totalItems } = useCart();
@@ -31,15 +35,20 @@ function OrderSummaryContent() {
 
     React.useEffect(() => {
         const normalized = (queryTableId || '').trim();
+        const storageKey = getScopedTableStorageKey(restaurantId);
         if (normalized) {
             setTableId(normalized);
-            localStorage.setItem(LAST_TABLE_STORAGE_KEY, normalized);
+            if (storageKey) {
+                localStorage.setItem(storageKey, normalized);
+            }
             return;
         }
 
-        const remembered = (localStorage.getItem(LAST_TABLE_STORAGE_KEY) || '').trim();
+        const remembered = storageKey
+            ? (localStorage.getItem(storageKey) || '').trim()
+            : '';
         setTableId(remembered);
-    }, [queryTableId]);
+    }, [queryTableId, restaurantId]);
 
     const buildMenuUrl = () => {
         const params = new URLSearchParams();

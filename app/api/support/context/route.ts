@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
-
-type Claims = {
-    role?: string;
-    restaurant_id?: string;
-    tenant_id?: string;
-};
+import { adminFirestore } from '@/lib/firebase-admin';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type AiTier = 'free' | 'pro';
 
@@ -44,12 +39,8 @@ async function requireAuthorizedRestaurant(request: NextRequest): Promise<{ rest
         return NextResponse.json({ error: 'restaurantId is required' }, { status: 400 });
     }
 
-    const decoded = await adminAuth.verifyIdToken(token);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = (user.customClaims || {}) as Claims;
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
+    const authz = await authorizeTenantAccess(token, restaurantId, 'read');
+    if (!authz) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 

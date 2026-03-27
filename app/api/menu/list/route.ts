@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
+
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
+}
 
 export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
@@ -16,13 +21,11 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const decoded = await adminAuth.verifyIdToken(idToken);
-        const user = await adminAuth.getUser(decoded.uid);
-        const claims = user.customClaims || {};
-
-        const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-        if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+        const authz = await authorizeTenantAccess(idToken, restaurantId, 'read');
+        if (!authz) {
+            return NextResponse.json({
+                error: `Forbidden: tenant mismatch. You are not allowed to access menu data for restaurantId=${restaurantId}.`,
+            }, { status: 403 });
         }
 
         const [categoriesSnap, itemsSnap] = await Promise.all([
@@ -47,7 +50,7 @@ export async function GET(request: NextRequest) {
         }));
 
         return NextResponse.json({ categories, menuItems });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message || 'Invalid session' }, { status: 401 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Invalid session') }, { status: 401 });
     }
 }

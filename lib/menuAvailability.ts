@@ -34,11 +34,7 @@ export function getAvailabilityMap(scopeId?: string): Record<string, boolean> {
     try {
         const key = scopedKey(scopeId);
         const raw = localStorage.getItem(key);
-        if (raw) return JSON.parse(raw);
-
-        // One-time fallback for older unscoped data.
-        const legacyRaw = localStorage.getItem(LS_KEY);
-        return legacyRaw ? JSON.parse(legacyRaw) : {};
+        return raw ? JSON.parse(raw) : {};
     } catch {
         return {};
     }

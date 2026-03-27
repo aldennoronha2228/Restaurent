@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
-
-type Claims = {
-    role?: string;
-    restaurant_id?: string;
-    tenant_id?: string;
-};
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
@@ -17,23 +12,23 @@ function sanitizeRestaurantId(input: unknown): string {
     return /^[a-zA-Z0-9_-]{3,80}$/.test(v) ? v : '';
 }
 
-async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: string): Promise<Claims | NextResponse> {
+async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: string): Promise<true | NextResponse> {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.slice(7);
-    const decoded = await adminAuth.verifyIdToken(token);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = (user.customClaims || {}) as Claims;
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
+    const authz = await authorizeTenantAccess(token, restaurantId, 'manage');
+    if (!authz) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    return claims;
+    return true;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function extensionFromMime(type: string): string {
@@ -124,7 +119,7 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ success: true, logoUrl: signedUrl, assetType });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Failed to upload logo' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to upload logo') }, { status: 500 });
     }
 }

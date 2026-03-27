@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type LayoutPayload = {
     tables?: unknown[];
@@ -9,38 +10,33 @@ type LayoutPayload = {
     floorPlans?: unknown[];
 };
 
-function canAccessRestaurant(claims: Record<string, unknown>, restaurantId: string): boolean {
-    if (claims.role === 'super_admin') return true;
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    return claimRestaurantId === restaurantId;
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
 }
 
-async function verifyRequest(request: NextRequest, restaurantId: string) {
+async function verifyRequest(request: NextRequest, restaurantId: string, level: 'read' | 'manage') {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw new Error('Unauthorized');
     }
 
     const idToken = authHeader.replace('Bearer ', '');
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = (user.customClaims || {}) as Record<string, unknown>;
-
-    if (!canAccessRestaurant(claims, restaurantId)) {
+    const authz = await authorizeTenantAccess(idToken, restaurantId, level);
+    if (!authz) {
         throw new Error('Access denied');
     }
 
-    return decoded.uid;
+    return authz.uid;
 }
 
 export async function GET(request: NextRequest) {
-    const restaurantId = request.nextUrl.searchParams.get('restaurantId')?.trim() || '';
+    const restaurantId = new URL(request.url).searchParams.get('restaurantId')?.trim() || '';
     if (!restaurantId) {
         return NextResponse.json({ error: 'restaurantId is required' }, { status: 400 });
     }
 
     try {
-        await verifyRequest(request, restaurantId);
+        await verifyRequest(request, restaurantId, 'read');
 
         const layoutRef = adminFirestore.doc(`restaurants/${restaurantId}/settings/floor_layout`);
         const snapshot = await layoutRef.get();
@@ -59,8 +55,8 @@ export async function GET(request: NextRequest) {
                 floorPlans: Array.isArray(data.floorPlans) ? data.floorPlans : [],
             },
         });
-    } catch (error: any) {
-        const message = error?.message || 'Request failed';
+    } catch (error: unknown) {
+        const message = errorMessage(error, 'Request failed');
         const status = message === 'Unauthorized' ? 401 : message === 'Access denied' ? 403 : 500;
         return NextResponse.json({ error: message }, { status });
     }
@@ -75,7 +71,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'restaurantId is required' }, { status: 400 });
         }
 
-        const updatedBy = await verifyRequest(request, restaurantId);
+        const updatedBy = await verifyRequest(request, restaurantId, 'manage');
 
         const hasTables = Object.prototype.hasOwnProperty.call(body, 'tables');
         const hasWalls = Object.prototype.hasOwnProperty.call(body, 'walls');
@@ -123,8 +119,8 @@ export async function POST(request: NextRequest) {
         await layoutRef.set(updatePayload, { merge: true });
 
         return NextResponse.json({ success: true });
-    } catch (error: any) {
-        const message = error?.message || 'Request failed';
+    } catch (error: unknown) {
+        const message = errorMessage(error, 'Request failed');
         const status = message === 'Unauthorized' ? 401 : message === 'Access denied' ? 403 : 500;
         return NextResponse.json({ error: message }, { status });
     }

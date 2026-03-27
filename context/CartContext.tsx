@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { getTenantOrderHistoryStorageKey, resolveRestaurantIdFromSearch } from '@/lib/client/storage/tenantKeys';
 
 export interface MenuItem {
     id: string;
@@ -40,18 +41,27 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+function resolveRestaurantScope(): string {
+    return resolveRestaurantIdFromSearch('default');
+}
+
+function orderHistoryKey(): string {
+    return getTenantOrderHistoryStorageKey(resolveRestaurantScope());
+}
+
 export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
-    const [orderHistory, setOrderHistory] = useState<Order[]>([]);
-
-    // Load order history from localStorage on mount
-    useEffect(() => {
-        const savedHistory = localStorage.getItem('orderHistory');
-        if (savedHistory) {
-            setOrderHistory(JSON.parse(savedHistory));
+    const [orderHistory, setOrderHistory] = useState<Order[]>(() => {
+        if (typeof window === 'undefined') return [];
+        const savedHistory = localStorage.getItem(orderHistoryKey());
+        if (!savedHistory) return [];
+        try {
+            return JSON.parse(savedHistory) as Order[];
+        } catch {
+            return [];
         }
-    }, []);
+    });
 
     const addToCart = (item: MenuItem) => {
         setCart((prevCart) => {
@@ -90,7 +100,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const saveOrder = (order: Order) => {
         const updatedHistory = [order, ...orderHistory];
         setOrderHistory(updatedHistory);
-        localStorage.setItem('orderHistory', JSON.stringify(updatedHistory));
+        localStorage.setItem(orderHistoryKey(), JSON.stringify(updatedHistory));
     };
 
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);

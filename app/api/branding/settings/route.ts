@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
-
-type Claims = {
-    role?: string;
-    restaurant_id?: string;
-    tenant_id?: string;
-};
+import { adminFirestore } from '@/lib/firebase-admin';
+import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 
 type BrandingPayload = {
     primaryColor?: unknown;
@@ -79,23 +74,23 @@ function normalizeStringArray(value: unknown, maxItems: number, maxLen: number):
     return out;
 }
 
-async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: string): Promise<Claims | NextResponse> {
+async function requireAuthorizedRestaurant(request: NextRequest, restaurantId: string): Promise<true | NextResponse> {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.slice(7);
-    const decoded = await adminAuth.verifyIdToken(token);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = (user.customClaims || {}) as Claims;
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '');
-    if (claims.role !== 'super_admin' && claimRestaurantId !== restaurantId) {
+    const authz = await authorizeTenantAccess(token, restaurantId, 'manage');
+    if (!authz) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    return claims;
+    return true;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export async function GET(request: NextRequest) {
@@ -139,8 +134,8 @@ export async function GET(request: NextRequest) {
             catalogHeadline: normalizeText(mergedBranding.catalogHeadline, 80, ''),
             featuredImages: normalizeStringArray(mergedBranding.featuredImages, 8, 500),
         });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Failed to load branding' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to load branding') }, { status: 500 });
     }
 }
 
@@ -198,7 +193,7 @@ export async function POST(request: NextRequest) {
         }, { merge: true });
 
         return NextResponse.json({ success: true });
-    } catch (error: any) {
-        return NextResponse.json({ error: error?.message || 'Failed to save branding' }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, 'Failed to save branding') }, { status: 500 });
     }
 }

@@ -44,12 +44,10 @@ export function useRestaurant() {
     const [resolvedTenantName, setResolvedTenantName] = useState<string | null>(null);
 
     // ── 2. Authorization check ────────────────────────────────────────────
-    const isAuthorized = isSuperAdmin || urlStoreId === tenantId;
+    const isAuthorized = isSuperAdmin || (Boolean(urlStoreId) && urlStoreId === tenantId);
 
     // ── 3. Active storeId for queries ─────────────────────────────────────
-    const activeStoreId = isSuperAdmin
-        ? (urlStoreId || tenantId)   // super-admin: URL slug first
-        : (tenantId || '');          // normal user: NEVER fall back to URL slug without claims
+    const activeStoreId = urlStoreId || tenantId || '';
 
     // ── 4. Correct Firestore instance ─────────────────────────────────────
     // If we are in "God Mode" (authenticated via adminAuth), we MUST use adminDb
@@ -89,6 +87,8 @@ export function useRestaurant() {
         db: activeDb,
         /** The restaurant_id to use in ALL queries — always URL-slug scoped */
         storeId: activeStoreId,
+        /** Session tenant from auth claims/profile (used for mismatch guards) */
+        sessionTenantId: tenantId || '',
         /** The raw storeId from the URL (useful for building nav hrefs) */
         urlStoreId,
         isAuthorized,
