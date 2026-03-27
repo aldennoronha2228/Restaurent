@@ -10,7 +10,7 @@ const SESSION_KEY = 'nexresto_nexo_support_chat_v1';
 
 const STARTER_MESSAGE = {
     role: 'assistant',
-    content: 'Hi, I am Nexo. I can help with operations, growth, and technical issues across your dashboard.\n- You can type naturally in any style and I will execute supported changes. Example: "please make paneer tikka unavailable", "change margherita price to 349", "arrange all tables in square", or "add menu item name=Margherita Pizza, price=299, category=Pizza, type=veg".',
+    content: 'Hi, I am Nexo. I can help with operations, growth, and technical issues across your dashboard.\n- I read live context from menu, tables, orders, inventory, reports, branding, and staff modules for your restaurant.\n- You can type naturally in any style and I will execute supported changes. Example: "please make paneer tikka unavailable", "change margherita price to 349", "arrange all tables in square", or "add menu item name=Margherita Pizza, price=299, category=Pizza, type=veg".',
 };
 
 function toUsageState(payload) {

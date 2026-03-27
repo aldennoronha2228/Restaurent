@@ -7,7 +7,6 @@ import {
     Bookmark,
     Search,
     ShoppingBag,
-    UserPlus,
     X,
 } from 'lucide-react';
 import type { MenuItem as CartMenuItem } from '@/context/CartContext';
@@ -119,23 +118,34 @@ export function GourmetCatalogLayout({
 }: GourmetCatalogLayoutProps) {
     const [menuOpen, setMenuOpen] = React.useState(false);
     const [dietFilter, setDietFilter] = React.useState<'veg' | 'nonveg'>('veg');
+    const [searchQuery, setSearchQuery] = React.useState('');
     const sectionRefs = React.useRef<Record<string, HTMLElement | null>>({});
 
     const filteredByDiet = React.useMemo(() => {
         return items.filter((item) => dietFilter === 'veg' ? isVegItem(item) : !isVegItem(item));
     }, [items, dietFilter]);
 
+    const filteredByDietAndSearch = React.useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return filteredByDiet;
+
+        return filteredByDiet.filter((item) => {
+            const haystack = `${item.name} ${item.description || ''} ${item.category || ''}`.toLowerCase();
+            return haystack.includes(query);
+        });
+    }, [filteredByDiet, searchQuery]);
+
     const groupedSections = React.useMemo(() => {
         const ordered = categories.filter((category) => category !== 'All');
         const sections = ordered
             .map((category) => ({
                 category,
-                items: filteredByDiet.filter((item) => item.category === category),
+                items: filteredByDietAndSearch.filter((item) => item.category === category),
             }))
             .filter((section) => section.items.length > 0);
 
         const known = new Set(sections.map((section) => section.category));
-        const extras = filteredByDiet
+        const extras = filteredByDietAndSearch
             .filter((item) => !known.has(item.category))
             .reduce<Record<string, CatalogItem[]>>((acc, item) => {
                 const key = item.category || 'Others';
@@ -145,11 +155,9 @@ export function GourmetCatalogLayout({
             }, {});
 
         return [...sections, ...Object.entries(extras).map(([category, list]) => ({ category, items: list }))];
-    }, [categories, filteredByDiet]);
+    }, [categories, filteredByDietAndSearch]);
 
     const heading = `${dietFilter === 'veg' ? 'Veg Menu' : 'Non-Veg Menu'}`;
-
-    const itemList = filteredByDiet.slice(0, 24);
 
     const categoryCounts = React.useMemo(() => {
         const preset = categories.filter((category) => category !== 'All');
@@ -186,7 +194,7 @@ export function GourmetCatalogLayout({
         >
             <div className="mx-auto min-h-screen w-full max-w-md pb-28 md:max-w-3xl md:pb-20">
                 <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/95 px-4 pb-3 pt-3 backdrop-blur-sm md:px-6">
-                    <div className="mb-3 flex items-center gap-2">
+                    <div className="mb-3 flex items-center">
                         <div className="flex h-12 flex-1 items-center rounded-2xl border border-slate-200 bg-white px-2 shadow-sm">
                             <button
                                 onClick={onBack}
@@ -195,23 +203,28 @@ export function GourmetCatalogLayout({
                             >
                                 <ArrowLeft className="h-5 w-5" />
                             </button>
-                            <p className="ml-1 flex-1 truncate text-sm font-medium text-slate-500">
-                                Search dishes...
-                            </p>
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search dishes..."
+                                className="ml-1 h-9 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                                aria-label="Search dishes"
+                            />
                             <button
-                                onClick={onSearch}
+                                onClick={() => {
+                                    if (searchQuery.trim()) {
+                                        setSearchQuery('');
+                                    } else {
+                                        onSearch?.();
+                                    }
+                                }}
                                 className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
-                                aria-label="Search"
+                                aria-label={searchQuery.trim() ? 'Clear search' : 'Search'}
                             >
-                                <Search className="h-5 w-5" />
+                                {searchQuery.trim() ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
                             </button>
                         </div>
-                        <button
-                            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700"
-                            aria-label="Profile"
-                        >
-                            <UserPlus className="h-5 w-5" />
-                        </button>
                     </div>
 
                     <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

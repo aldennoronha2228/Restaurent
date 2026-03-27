@@ -20,6 +20,17 @@ type DashboardContext = {
         orderCounts?: Record<string, number>;
         menu?: Record<string, number>;
         tables?: Record<string, number>;
+        inventory?: Record<string, number>;
+        staff?: Record<string, number | Record<string, number>>;
+    };
+    modules?: {
+        menu?: Record<string, unknown>;
+        tables?: Record<string, unknown>;
+        orders?: Record<string, unknown>;
+        inventory?: Record<string, unknown>;
+        reports?: Record<string, unknown>;
+        branding?: Record<string, unknown>;
+        staff?: Record<string, unknown>;
     };
     uiTips?: {
         keyAreas?: string[];
@@ -78,6 +89,7 @@ type AuthorizedRestaurant = {
 
 type ParsedAction =
     | { type: 'add_table'; seats: number; name?: string }
+    | { type: 'remove_table'; tableRef: string }
     | { type: 'add_menu_item'; name: string; price: number; category: string; foodType: 'veg' | 'non-veg'; imageUrl?: string }
     | { type: 'update_menu_item_price'; name: string; price: number }
     | { type: 'toggle_menu_item_availability'; name: string; available: boolean }
@@ -188,6 +200,16 @@ function parseActionFromText(text: string): ParsedAction {
         }
     }
 
+    const removeTableMatch = normalized.match(/(?:remove|delete)\s+(?:table\s*)#?([A-Za-z0-9-]+)$/i)
+        || normalized.match(/(?:remove|delete)\s+#?([A-Za-z0-9-]+)\s+table$/i)
+        || normalized.match(/(?:remove|delete)\s+(?:the\s+)?table\s+(?:number\s*)?(\d{1,4})$/i);
+    if (removeTableMatch) {
+        const tableRef = String(removeTableMatch[1] || '').trim();
+        if (tableRef) {
+            return { type: 'remove_table', tableRef };
+        }
+    }
+
     if (
         lower.includes('add menu item') ||
         lower.includes('add item to menu') ||
@@ -241,7 +263,7 @@ function parseActionFromText(text: string): ParsedAction {
         }
     }
 
-    const deleteItemMatch = normalized.match(/(?:delete|remove)\s+(?:menu\s+item\s+)?"?([^"\n]+?)"?$/i);
+    const deleteItemMatch = normalized.match(/(?:delete|remove)\s+(?:menu\s+item|item|dish)\s+"?([^"\n]+?)"?$/i);
     if (deleteItemMatch) {
         const name = deleteItemMatch[1].trim();
         if (name) {
@@ -412,6 +434,70 @@ async function executeAction(action: ParsedAction, auth: AuthorizedRestaurant): 
             ok: true,
             message: `Done. Added ${nextName} (${action.seats} seats) with id ${nextId}.`,
             data: nextTable,
+        };
+    }
+
+    if (action.type === 'remove_table') {
+        const layoutRef = adminFirestore.doc(`restaurants/${auth.restaurantId}/settings/floor_layout`);
+        const layoutSnap = await layoutRef.get();
+        const currentTables = Array.isArray(layoutSnap.data()?.tables) ? layoutSnap.data()?.tables : [];
+
+        if (currentTables.length === 0) {
+            return {
+                ok: false,
+                message: 'No tables exist yet, so there is nothing to remove.',
+            };
+        }
+
+        const normalizedRef = action.tableRef.trim().toLowerCase();
+        const refNumber = normalizedRef.match(/\d+/)?.[0] || '';
+
+        const targetIndex = currentTables.findIndex((table: any) => {
+            const id = String(table?.id || '').trim();
+            const name = String(table?.name || '').trim();
+            const idLower = id.toLowerCase();
+            const nameLower = name.toLowerCase();
+
+            if (!normalizedRef) return false;
+            if (idLower === normalizedRef || nameLower === normalizedRef) return true;
+
+            const idNumber = id.match(/\d+/)?.[0] || '';
+            const nameNumber = name.match(/\d+/)?.[0] || '';
+            if (refNumber && (idNumber === refNumber || nameNumber === refNumber)) return true;
+
+            if (refNumber && (idLower === `t-${refNumber}` || idLower === `t-${refNumber.padStart(2, '0')}`)) return true;
+            if (refNumber && (nameLower === `table ${refNumber}` || nameLower === `table-${refNumber}`)) return true;
+
+            return false;
+        });
+
+        if (targetIndex < 0) {
+            return {
+                ok: false,
+                message: `I could not find table ${action.tableRef}. Please share the exact table id or name (for example: T-11).`,
+            };
+        }
+
+        const removed = currentTables[targetIndex];
+        const nextTables = currentTables.filter((_: any, idx: number) => idx !== targetIndex);
+
+        await layoutRef.set(
+            {
+                tables: nextTables,
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedBy: auth.uid,
+            },
+            { merge: true }
+        );
+
+        return {
+            ok: true,
+            message: `Done. Removed table ${String(removed?.name || removed?.id || action.tableRef)}.`,
+            data: {
+                removedId: String(removed?.id || ''),
+                removedName: String(removed?.name || ''),
+                remainingTables: nextTables.length,
+            },
         };
     }
 
@@ -719,6 +805,7 @@ function buildContextPrompt(context: DashboardContext | null): string {
     const safe = {
         restaurant: context.restaurant || {},
         metrics: context.metrics || {},
+        modules: context.modules || {},
         uiTips: context.uiTips || {},
         generatedAt: context.generatedAt || null,
     };
@@ -728,6 +815,7 @@ function buildContextPrompt(context: DashboardContext | null): string {
         JSON.stringify(safe),
         'Use this context to answer operational and usage questions accurately.',
         'If asked about numbers, prefer these values over generic estimates.',
+        'You are connected to all major modules in this context: menu, tables, orders, inventory, reports, branding, and staff.',
     ].join('\n');
 }
 
@@ -848,6 +936,15 @@ function coerceParsedAction(raw: unknown): ParsedAction {
         };
     }
 
+    if (type === 'remove_table') {
+        const tableRef = normalizeTextValue(input.tableRef || input.table || input.id || input.name);
+        if (!tableRef) return { type: 'unknown' };
+        return {
+            type: 'remove_table',
+            tableRef,
+        };
+    }
+
     if (type === 'add_menu_item') {
         const name = normalizeTextValue(input.name);
         const category = normalizeTextValue(input.category);
@@ -935,9 +1032,10 @@ function coerceParsedAction(raw: unknown): ParsedAction {
 const ACTION_PLANNER_PROMPT = [
     'You convert free-form admin instructions into one executable dashboard action JSON.',
     'Output STRICT JSON only. No markdown.',
-    'Allowed action types: add_table, add_menu_item, update_menu_item_price, toggle_menu_item_availability, delete_menu_item, add_category, rename_category, arrange_tables_square, keep_first_tables, unknown.',
+    'Allowed action types: add_table, remove_table, add_menu_item, update_menu_item_price, toggle_menu_item_availability, delete_menu_item, add_category, rename_category, arrange_tables_square, keep_first_tables, unknown.',
     'Required shape by type:',
     '- add_table: {"type":"add_table","seats":number,"name"?:string}',
+    '- remove_table: {"type":"remove_table","tableRef":string}',
     '- add_menu_item: {"type":"add_menu_item","name":string,"price":number,"category":string,"foodType":"veg"|"non-veg","imageUrl"?:string}',
     '- update_menu_item_price: {"type":"update_menu_item_price","name":string,"price":number}',
     '- toggle_menu_item_availability: {"type":"toggle_menu_item_availability","name":string,"available":boolean}',

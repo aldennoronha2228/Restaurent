@@ -646,9 +646,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const activeUser = user || superAdminSession?.user;
 
-    const userInitial = activeUser?.displayName?.[0]
-        ?? activeUser?.email?.[0]?.toUpperCase()
-        ?? 'A';
+    const tenantInitial = (
+        (displayTenantName || urlStoreId || activeUser?.displayName || activeUser?.email || 'R')
+            .trim()
+            .match(/[A-Za-z0-9]/)?.[0] || 'R'
+    ).toUpperCase();
 
     return (
         <SubscriptionGuard>
@@ -935,10 +937,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                                         onClick={() => setShowUserMenu(p => !p)}
                                         className="hidden md:flex w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff4757] to-[#ff6b81] items-center justify-center text-white font-bold text-sm shadow-lg shadow-rose-500/35"
+                                        title={displayTenantName || 'Restaurant'}
+                                        aria-label={`Tenant avatar ${displayTenantName || ''}`.trim()}
                                     >
-                                        {user?.photoURL ? (
-                                            <img src={user.photoURL} alt="avatar" className="w-full h-full rounded-xl object-cover" />
-                                        ) : userInitial}
+                                        {tenantInitial}
                                     </motion.button>
                                     <AnimatePresence>
                                         {showUserMenu && (
