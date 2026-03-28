@@ -16,18 +16,35 @@ function normalizeOrigin(raw: string): string | null {
     }
 }
 
+function isLocalHost(hostname: string): boolean {
+    const value = (hostname || '').toLowerCase();
+    return value === 'localhost' || value === '127.0.0.1' || value === '0.0.0.0' || value.endsWith('.local');
+}
+
+function isLocalOrigin(origin: string): boolean {
+    try {
+        const parsed = new URL(origin);
+        return isLocalHost(parsed.hostname);
+    } catch {
+        return false;
+    }
+}
+
 export function getSiteOrigin(): string {
+    const isProduction = process.env.NODE_ENV === 'production';
     const candidates = [
         process.env.NEXT_PUBLIC_SITE_URL,
-        process.env.NEXT_PUBLIC_MENU_BASE_URL,
         process.env.NEXT_PUBLIC_APP_URL,
         process.env.VERCEL_PROJECT_PRODUCTION_URL,
         process.env.VERCEL_URL,
+        process.env.NEXT_PUBLIC_MENU_BASE_URL,
     ];
 
     for (const candidate of candidates) {
         const normalized = normalizeOrigin(candidate || '');
-        if (normalized) return normalized;
+        if (!normalized) continue;
+        if (isProduction && isLocalOrigin(normalized)) continue;
+        return normalized;
     }
 
     return FALLBACK_ORIGIN;

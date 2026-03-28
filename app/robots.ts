@@ -2,6 +2,9 @@ import type { MetadataRoute } from 'next';
 import { buildAbsoluteUrl, getSiteOrigin } from '@/lib/seo/url';
 
 export default function robots(): MetadataRoute.Robots {
+    const origin = getSiteOrigin();
+    const host = new URL(origin).host;
+
     return {
         rules: [
             {
@@ -30,6 +33,6 @@ export default function robots(): MetadataRoute.Robots {
             },
         ],
         sitemap: buildAbsoluteUrl('/sitemap.xml'),
-        host: getSiteOrigin(),
+        host,
     };
 }
