@@ -10,13 +10,14 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'NexResto — Dashboard',
   description: 'NexResto restaurant management dashboard',
+  manifest: '/site.webmanifest',
   icons: {
     icon: [
-      { url: '/icon.png?v=20260321' },
-      { url: '/nexresto-mark.svg?v=20260321', type: 'image/svg+xml' },
+      { url: '/favicon.png?v=20260328', type: 'image/png' },
+      { url: '/nexresto-mark.svg?v=20260328', type: 'image/svg+xml' },
     ],
-    shortcut: '/icon.png?v=20260321',
-    apple: '/apple-icon.png?v=20260321',
+    shortcut: '/favicon.png?v=20260328',
+    apple: '/apple-touch-icon.png?v=20260328',
   },
 };
 
