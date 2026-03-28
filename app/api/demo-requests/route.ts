@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase-admin';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { sendDemoRequestNotificationEmail } from '@/lib/email';
 
 type DemoRequestPayload = {
     contactName?: unknown;
@@ -115,6 +116,46 @@ export async function POST(request: NextRequest) {
             restaurant_name: restaurantName,
             created_at: FieldValue.serverTimestamp(),
         });
+
+        const superAdminEmail = cleanString(process.env.SUPER_ADMIN_EMAIL, 160).toLowerCase();
+        if (superAdminEmail && isValidEmail(superAdminEmail)) {
+            const notificationResult = await sendDemoRequestNotificationEmail({
+                to: superAdminEmail,
+                requestId: ref.id,
+                contactName,
+                businessEmail,
+                phone,
+                restaurantName,
+                outletCount,
+                qrRequirements,
+            });
+
+            if (notificationResult.success) {
+                await adminFirestore.doc(`demo_requests/${ref.id}`).set({
+                    notification_email_sent_at: FieldValue.serverTimestamp(),
+                    notification_email_to: superAdminEmail,
+                    notification_email_provider_id: notificationResult.providerMessageId || null,
+                }, { merge: true });
+            } else {
+                console.error('[demo-requests] Notification email failed:', notificationResult.error);
+                await adminFirestore.collection('global_logs').add({
+                    event_type: 'DEMO_REQUEST_NOTIFICATION_EMAIL_FAILED',
+                    message: `Failed to send demo request notification for ${restaurantName}`,
+                    severity: 'warning',
+                    metadata: {
+                        request_id: ref.id,
+                        to: superAdminEmail,
+                        error: notificationResult.error || 'Unknown email error',
+                    },
+                    tenant_id: null,
+                    user_id: null,
+                    restaurant_name: restaurantName,
+                    created_at: FieldValue.serverTimestamp(),
+                });
+            }
+        } else {
+            console.warn('[demo-requests] SUPER_ADMIN_EMAIL is missing or invalid, skipping notification email');
+        }
 
         return NextResponse.json({ ok: true, requestId: ref.id }, { status: 201 });
     } catch (error) {

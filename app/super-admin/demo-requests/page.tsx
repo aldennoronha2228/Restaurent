@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, Inbox, RefreshCw, Search, XCircle } from 'lucide-react';
 import {
     getDemoRequests,
+    sendDemoRequestLoginLink,
     updateDemoRequestStatus,
     type DemoRequestRow,
     type DemoRequestStatus,
@@ -45,6 +46,7 @@ export default function SuperAdminDemoRequestsPage() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [busyId, setBusyId] = useState<string | null>(null);
+    const [sendingLoginForId, setSendingLoginForId] = useState<string | null>(null);
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | DemoRequestStatus>('all');
@@ -110,6 +112,25 @@ export default function SuperAdminDemoRequestsPage() {
             setMessage({ type: 'error', text: result.error || 'Failed to update status' });
         }
         setBusyId(null);
+    };
+
+    const handleSendLoginUrl = async (row: DemoRequestRow) => {
+        if (row.status !== 'closed') {
+            setMessage({ type: 'error', text: 'Set status to Closed before sending login URL.' });
+            return;
+        }
+
+        setSendingLoginForId(row.id);
+        const result = await sendDemoRequestLoginLink(row.id);
+
+        if (result.success) {
+            setMessage({ type: 'success', text: `Login URL sent to ${row.business_email}` });
+            await loadRows('refresh');
+        } else {
+            setMessage({ type: 'error', text: result.error || 'Failed to send login URL' });
+        }
+
+        setSendingLoginForId(null);
     };
 
     return (
@@ -238,6 +259,25 @@ export default function SuperAdminDemoRequestsPage() {
                                                 ))}
                                             </select>
                                         </div>
+
+                                        <div className="space-y-1">
+                                            <button
+                                                disabled={sendingLoginForId === row.id || row.status !== 'closed'}
+                                                onClick={() => handleSendLoginUrl(row)}
+                                                className="w-full rounded-lg border border-white/10 bg-white/8 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                {sendingLoginForId === row.id
+                                                    ? 'Sending login URL...'
+                                                    : row.login_page_email_sent_at
+                                                        ? 'Resend Login URL'
+                                                        : 'Send Login URL'}
+                                            </button>
+                                            {row.login_page_email_sent_at && (
+                                                <p className="text-[11px] text-slate-500">
+                                                    Last sent: {formatDate(row.login_page_email_sent_at)}
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -253,11 +293,13 @@ export default function SuperAdminDemoRequestsPage() {
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">QR Requirements</th>
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Requested At</th>
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Status</th>
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Access Email</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {rows.map((row) => {
                                         const isBusy = busyId === row.id;
+                                        const isSendingLogin = sendingLoginForId === row.id;
                                         return (
                                             <tr key={row.id} className="border-b border-white/6 align-top hover:bg-white/[0.05] transition-colors">
                                                 <td className="px-4 py-3">
@@ -289,6 +331,28 @@ export default function SuperAdminDemoRequestsPage() {
                                                                 </option>
                                                             ))}
                                                         </select>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="space-y-1">
+                                                        <button
+                                                            disabled={isSendingLogin || row.status !== 'closed'}
+                                                            onClick={() => handleSendLoginUrl(row)}
+                                                            className="rounded-lg border border-white/10 bg-white/8 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        >
+                                                            {isSendingLogin
+                                                                ? 'Sending...'
+                                                                : row.login_page_email_sent_at
+                                                                    ? 'Resend Login URL'
+                                                                    : 'Send Login URL'}
+                                                        </button>
+                                                        {row.login_page_email_sent_at ? (
+                                                            <p className="text-[11px] text-slate-500 whitespace-nowrap">
+                                                                {formatDate(row.login_page_email_sent_at)}
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-[11px] text-slate-600 whitespace-nowrap">Not sent</p>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>

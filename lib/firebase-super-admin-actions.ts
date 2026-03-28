@@ -13,7 +13,8 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getApps } from 'firebase-admin/app';
 import { getStorage } from 'firebase-admin/storage';
 import { getOwnerEmailForRestaurant } from './reports';
-import { sendSubscriptionReminderEmail } from './email';
+import { sendDemoRequestLoginUrlEmail, sendSubscriptionReminderEmail } from './email';
+import { buildAbsoluteUrl } from './seo/url';
 
 // Types
 export interface PlatformStats {
@@ -115,6 +116,12 @@ export interface DemoRequestRow {
     created_at: string;
     updated_at: string | null;
     notes: string | null;
+    login_page_email_sent_at: string | null;
+    login_page_email_to: string | null;
+}
+
+function isValidEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function normalizeYmd(value: unknown): string | null {
@@ -604,6 +611,8 @@ export async function getDemoRequests(filters?: {
                 created_at: toIsoString(d.created_at) || new Date(0).toISOString(),
                 updated_at: toIsoString(d.updated_at),
                 notes: d.notes ? String(d.notes) : null,
+                login_page_email_sent_at: toIsoString(d.login_page_email_sent_at),
+                login_page_email_to: d.login_page_email_to ? String(d.login_page_email_to) : null,
             } as DemoRequestRow;
         });
 
@@ -664,6 +673,63 @@ export async function updateDemoRequestStatus(
         return { success: true };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Failed to update demo request';
+        return { success: false, error: message };
+    }
+}
+
+export async function sendDemoRequestLoginLink(
+    requestId: string
+): Promise<{ success: boolean; error?: string; sentAt?: string }> {
+    try {
+        const docRef = adminFirestore.doc(`demo_requests/${requestId}`);
+        const snap = await docRef.get();
+        if (!snap.exists) {
+            return { success: false, error: 'Demo request not found' };
+        }
+
+        const data = snap.data() || {};
+        const businessEmail = String(data.business_email || '').trim().toLowerCase();
+        if (!isValidEmail(businessEmail)) {
+            return { success: false, error: 'Client email is missing or invalid' };
+        }
+
+        const contactName = String(data.contact_name || 'there').trim();
+        const restaurantName = String(data.restaurant_name || 'your restaurant').trim();
+        const loginUrl = buildAbsoluteUrl('/login');
+
+        const mailResult = await sendDemoRequestLoginUrlEmail({
+            to: businessEmail,
+            contactName,
+            restaurantName,
+            loginUrl,
+        });
+
+        if (!mailResult.success) {
+            return { success: false, error: mailResult.error || 'Failed to send login URL email' };
+        }
+
+        const sentAt = new Date().toISOString();
+        await docRef.set({
+            login_page_email_sent_at: FieldValue.serverTimestamp(),
+            login_page_email_to: businessEmail,
+            login_page_email_provider_id: mailResult.providerMessageId || null,
+            login_page_url: loginUrl,
+            updated_at: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        await logActivity(
+            'DEMO_REQUEST_LOGIN_URL_SENT',
+            `Login URL email sent to ${businessEmail}`,
+            'success',
+            { request_id: requestId, to: businessEmail, login_url: loginUrl }
+        );
+
+        revalidatePath('/super-admin/demo-requests');
+        revalidatePath('/super-admin');
+
+        return { success: true, sentAt };
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to send login URL email';
         return { success: false, error: message };
     }
 }

@@ -297,3 +297,154 @@ export async function sendSubscriptionReminderEmail(params: {
         return { success: false, error: err instanceof Error ? err.message : 'Failed to send email' };
     }
 }
+
+export async function sendDemoRequestNotificationEmail(params: {
+    to: string;
+    requestId: string;
+    contactName: string;
+    businessEmail: string;
+    phone: string;
+    restaurantName: string;
+    outletCount: string;
+    qrRequirements?: string;
+}): Promise<{ success: boolean; error?: string; providerMessageId?: string }> {
+    if (!process.env.RESEND_API_KEY) {
+        console.error('[EMAIL] RESEND_API_KEY not configured');
+        return { success: false, error: 'Email service not configured' };
+    }
+
+    const from = resolveFromEmail();
+    if (!from) {
+        console.error('[EMAIL] RESEND_FROM_EMAIL is required in production');
+        return {
+            success: false,
+            error: 'Email sender not configured. Set RESEND_FROM_EMAIL to a verified domain sender.',
+        };
+    }
+
+    const escapeHtml = (value: string): string => value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+
+    const contactName = escapeHtml(params.contactName);
+    const businessEmail = escapeHtml(params.businessEmail);
+    const phone = escapeHtml(params.phone);
+    const restaurantName = escapeHtml(params.restaurantName);
+    const outletCount = escapeHtml(params.outletCount);
+    const requestId = escapeHtml(params.requestId);
+    const qrRequirements = escapeHtml(String(params.qrRequirements || 'No additional requirements'));
+
+    try {
+        const { data, error } = await getResendClient().emails.send({
+            from,
+            to: [params.to],
+            subject: `New demo request received: ${params.restaurantName}`,
+            html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 680px; margin: 0 auto; padding: 28px 16px; color: #0f172a;">
+                    <h1 style="margin: 0 0 8px; font-size: 24px;">New Demo Request Received</h1>
+                    <p style="margin: 0 0 18px; color: #475569;">A new QR demo request was submitted from the website.</p>
+
+                    <table style="width: 100%; border-collapse: collapse; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+                        <tbody>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0; width: 180px; color: #64748b;">Request ID</td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${requestId}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Restaurant</td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${restaurantName}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Contact</td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${contactName}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Email</td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${businessEmail}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Phone</td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${phone}</td></tr>
+                            <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Outlet Count</td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${outletCount}</td></tr>
+                            <tr><td style="padding: 10px; color: #64748b; vertical-align: top;">Requirements</td><td style="padding: 10px; white-space: pre-wrap;">${qrRequirements}</td></tr>
+                        </tbody>
+                    </table>
+
+                    <p style="margin-top: 16px; color: #64748b; font-size: 12px;">
+                        Open the Super Admin Demo Requests section to review and update status.
+                    </p>
+                </div>
+            `,
+        });
+
+        if (error) {
+            console.error('[EMAIL] Resend demo-request notification error:', error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: true, providerMessageId: data?.id };
+    } catch (err) {
+        console.error('[EMAIL] Failed to send demo-request notification email:', err);
+        return { success: false, error: err instanceof Error ? err.message : 'Failed to send email' };
+    }
+}
+
+export async function sendDemoRequestLoginUrlEmail(params: {
+    to: string;
+    contactName: string;
+    restaurantName: string;
+    loginUrl: string;
+}): Promise<{ success: boolean; error?: string; providerMessageId?: string }> {
+    if (!process.env.RESEND_API_KEY) {
+        console.error('[EMAIL] RESEND_API_KEY not configured');
+        return { success: false, error: 'Email service not configured' };
+    }
+
+    const from = resolveFromEmail();
+    if (!from) {
+        console.error('[EMAIL] RESEND_FROM_EMAIL is required in production');
+        return {
+            success: false,
+            error: 'Email sender not configured. Set RESEND_FROM_EMAIL to a verified domain sender.',
+        };
+    }
+
+    const escapeHtml = (value: string): string => value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+
+    const contactName = escapeHtml(params.contactName || 'there');
+    const restaurantName = escapeHtml(params.restaurantName || 'your restaurant');
+    const loginUrl = escapeHtml(params.loginUrl);
+
+    try {
+        const { data, error } = await getResendClient().emails.send({
+            from,
+            to: [params.to],
+            subject: `${params.restaurantName} - Your NexResto login link`,
+            html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 620px; margin: 0 auto; padding: 28px 16px; color: #0f172a;">
+                    <h1 style="margin: 0 0 10px; font-size: 24px;">Your NexResto Access Link</h1>
+                    <p style="margin: 0 0 12px; color: #334155; line-height: 1.6;">Hi ${contactName},</p>
+                    <p style="margin: 0 0 16px; color: #334155; line-height: 1.6;">
+                        Thanks for completing the demo for <strong>${restaurantName}</strong>. You can now access your NexResto account using the login page below.
+                    </p>
+
+                    <a href="${loginUrl}" style="display: inline-block; background: #ea580c; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 10px; font-weight: 600;">
+                        Open Login Page
+                    </a>
+
+                    <p style="margin: 16px 0 0; color: #475569; line-height: 1.6;">
+                        Direct URL: <a href="${loginUrl}" style="color: #2563eb; word-break: break-all;">${loginUrl}</a>
+                    </p>
+
+                    <p style="margin-top: 20px; color: #64748b; font-size: 12px;">
+                        If you were not expecting this email, you can ignore it.
+                    </p>
+                </div>
+            `,
+        });
+
+        if (error) {
+            console.error('[EMAIL] Resend demo-login-link error:', error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: true, providerMessageId: data?.id };
+    } catch (err) {
+        console.error('[EMAIL] Failed to send demo login URL email:', err);
+        return { success: false, error: err instanceof Error ? err.message : 'Failed to send email' };
+    }
+}
