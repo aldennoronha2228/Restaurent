@@ -929,9 +929,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     </button>
                                 )}
                                 <NotificationBell />
-                                <button onClick={() => setMobileMenuOpen(true)} className="md:hidden w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-xl transition-colors" title="Open settings">
-                                    <Menu className="w-5 h-5 text-slate-600" />
-                                </button>
                                 <div className="relative">
                                     <motion.button
                                         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
