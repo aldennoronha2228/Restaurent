@@ -14,7 +14,6 @@ import { getApps } from 'firebase-admin/app';
 import { getStorage } from 'firebase-admin/storage';
 import { getOwnerEmailForRestaurant } from './reports';
 import { sendDemoRequestLoginUrlEmail, sendSubscriptionReminderEmail } from './email';
-import { buildAbsoluteUrl } from './seo/url';
 
 // Types
 export interface PlatformStats {
@@ -118,6 +117,8 @@ export interface DemoRequestRow {
     notes: string | null;
     login_page_email_sent_at: string | null;
     login_page_email_to: string | null;
+    login_page_email_last_sent_on: string | null;
+    login_page_email_send_count: number;
 }
 
 function isValidEmail(value: string): boolean {
@@ -579,6 +580,10 @@ const DEMO_REQUEST_STATUS_SET = new Set<DemoRequestStatus>([
     'closed',
 ]);
 
+const DEMO_LOGIN_LINK_COOLDOWN_MS = 10 * 60 * 1000;
+const DEMO_LOGIN_LINK_MAX_SENDS_PER_DAY = 3;
+const DEMO_REQUEST_LOGIN_URL = 'https://nexresto.in/login';
+
 export async function getDemoRequests(filters?: {
     status?: 'all' | DemoRequestStatus;
     search?: string;
@@ -613,6 +618,12 @@ export async function getDemoRequests(filters?: {
                 notes: d.notes ? String(d.notes) : null,
                 login_page_email_sent_at: toIsoString(d.login_page_email_sent_at),
                 login_page_email_to: d.login_page_email_to ? String(d.login_page_email_to) : null,
+                login_page_email_last_sent_on: d.login_page_email_last_sent_on
+                    ? String(d.login_page_email_last_sent_on)
+                    : null,
+                login_page_email_send_count: Number.isFinite(Number(d.login_page_email_send_count))
+                    ? Math.max(0, Math.floor(Number(d.login_page_email_send_count)))
+                    : 0,
             } as DemoRequestRow;
         });
 
@@ -688,6 +699,41 @@ export async function sendDemoRequestLoginLink(
         }
 
         const data = snap.data() || {};
+        const statusRaw = String(data.status || 'new').trim().toLowerCase() as DemoRequestStatus;
+        const status: DemoRequestStatus = DEMO_REQUEST_STATUS_SET.has(statusRaw) ? statusRaw : 'new';
+        if (status !== 'closed') {
+            return { success: false, error: 'Set status to Closed before sending login URL' };
+        }
+
+        const now = new Date();
+        const nowMs = now.getTime();
+        const lastSentAt = toIsoString(data.login_page_email_sent_at);
+        if (lastSentAt) {
+            const lastSentMs = new Date(lastSentAt).getTime();
+            if (!Number.isNaN(lastSentMs)) {
+                const elapsedMs = nowMs - lastSentMs;
+                if (elapsedMs < DEMO_LOGIN_LINK_COOLDOWN_MS) {
+                    const retryAfterSecs = Math.ceil((DEMO_LOGIN_LINK_COOLDOWN_MS - elapsedMs) / 1000);
+                    return { success: false, error: `Please wait ${retryAfterSecs}s before resending` };
+                }
+            }
+        }
+
+        const todayYmd = now.toISOString().slice(0, 10);
+        const sentOnYmd = String(data.login_page_email_last_sent_on || '').trim();
+        const sentCountRaw = Number(data.login_page_email_send_count || 0);
+        const sentCountToday =
+            sentOnYmd === todayYmd && Number.isFinite(sentCountRaw) && sentCountRaw > 0
+                ? Math.floor(sentCountRaw)
+                : 0;
+
+        if (sentCountToday >= DEMO_LOGIN_LINK_MAX_SENDS_PER_DAY) {
+            return {
+                success: false,
+                error: `Daily resend limit reached (${DEMO_LOGIN_LINK_MAX_SENDS_PER_DAY}/day)`,
+            };
+        }
+
         const businessEmail = String(data.business_email || '').trim().toLowerCase();
         if (!isValidEmail(businessEmail)) {
             return { success: false, error: 'Client email is missing or invalid' };
@@ -695,7 +741,7 @@ export async function sendDemoRequestLoginLink(
 
         const contactName = String(data.contact_name || 'there').trim();
         const restaurantName = String(data.restaurant_name || 'your restaurant').trim();
-        const loginUrl = buildAbsoluteUrl('/login');
+        const loginUrl = DEMO_REQUEST_LOGIN_URL;
 
         const mailResult = await sendDemoRequestLoginUrlEmail({
             to: businessEmail,
@@ -709,11 +755,14 @@ export async function sendDemoRequestLoginLink(
         }
 
         const sentAt = new Date().toISOString();
+        const nextSendCount = sentCountToday + 1;
         await docRef.set({
             login_page_email_sent_at: FieldValue.serverTimestamp(),
             login_page_email_to: businessEmail,
             login_page_email_provider_id: mailResult.providerMessageId || null,
             login_page_url: loginUrl,
+            login_page_email_last_sent_on: todayYmd,
+            login_page_email_send_count: nextSendCount,
             updated_at: FieldValue.serverTimestamp(),
         }, { merge: true });
 
@@ -721,7 +770,12 @@ export async function sendDemoRequestLoginLink(
             'DEMO_REQUEST_LOGIN_URL_SENT',
             `Login URL email sent to ${businessEmail}`,
             'success',
-            { request_id: requestId, to: businessEmail, login_url: loginUrl }
+            {
+                request_id: requestId,
+                to: businessEmail,
+                login_url: loginUrl,
+                send_count_today: nextSendCount,
+            }
         );
 
         revalidatePath('/super-admin/demo-requests');

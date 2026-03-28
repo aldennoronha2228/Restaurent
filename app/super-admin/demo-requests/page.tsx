@@ -21,6 +21,9 @@ const STATUS_OPTIONS: Array<{ value: 'all' | DemoRequestStatus; label: string }>
     { value: 'closed', label: 'Closed' },
 ];
 
+const LOGIN_LINK_COOLDOWN_MS = 10 * 60 * 1000;
+const LOGIN_LINK_MAX_SENDS_PER_DAY = 3;
+
 function formatDate(value: string): string {
     const dt = new Date(value);
     if (Number.isNaN(dt.getTime())) return value;
@@ -41,12 +44,84 @@ function statusClasses(status: DemoRequestStatus): string {
     return 'bg-slate-500/15 text-slate-300 border-slate-500/30';
 }
 
+function formatRetry(seconds: number): string {
+    if (seconds <= 0) return 'now';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins <= 0) return `${secs}s`;
+    return `${mins}m ${secs}s`;
+}
+
+function getAccessEmailState(row: DemoRequestRow, nowMs: number): {
+    canSend: boolean;
+    reason: string | null;
+    sentToday: number;
+    remainingToday: number;
+    retryAfterSecs: number;
+} {
+    const todayYmd = new Date(nowMs).toISOString().slice(0, 10);
+    const sentToday = row.login_page_email_last_sent_on === todayYmd
+        ? Math.max(0, Math.floor(row.login_page_email_send_count || 0))
+        : 0;
+    const remainingToday = Math.max(0, LOGIN_LINK_MAX_SENDS_PER_DAY - sentToday);
+
+    let retryAfterSecs = 0;
+    if (row.login_page_email_sent_at) {
+        const lastSentMs = new Date(row.login_page_email_sent_at).getTime();
+        if (!Number.isNaN(lastSentMs)) {
+            const elapsedMs = nowMs - lastSentMs;
+            if (elapsedMs < LOGIN_LINK_COOLDOWN_MS) {
+                retryAfterSecs = Math.ceil((LOGIN_LINK_COOLDOWN_MS - elapsedMs) / 1000);
+            }
+        }
+    }
+
+    if (row.status !== 'closed') {
+        return {
+            canSend: false,
+            reason: 'Set status to Closed to enable sending',
+            sentToday,
+            remainingToday,
+            retryAfterSecs,
+        };
+    }
+
+    if (remainingToday <= 0) {
+        return {
+            canSend: false,
+            reason: `Daily limit reached (${LOGIN_LINK_MAX_SENDS_PER_DAY}/day)`,
+            sentToday,
+            remainingToday,
+            retryAfterSecs,
+        };
+    }
+
+    if (retryAfterSecs > 0) {
+        return {
+            canSend: false,
+            reason: `Retry in ${formatRetry(retryAfterSecs)}`,
+            sentToday,
+            remainingToday,
+            retryAfterSecs,
+        };
+    }
+
+    return {
+        canSend: true,
+        reason: null,
+        sentToday,
+        remainingToday,
+        retryAfterSecs,
+    };
+}
+
 export default function SuperAdminDemoRequestsPage() {
     const [rows, setRows] = useState<DemoRequestRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [busyId, setBusyId] = useState<string | null>(null);
     const [sendingLoginForId, setSendingLoginForId] = useState<string | null>(null);
+    const [nowMs, setNowMs] = useState<number>(() => Date.now());
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | DemoRequestStatus>('all');
@@ -91,6 +166,14 @@ export default function SuperAdminDemoRequestsPage() {
         return () => clearTimeout(timer);
     }, [message]);
 
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setNowMs(Date.now());
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, []);
+
     const stats = useMemo(() => {
         return {
             total: rows.length,
@@ -115,8 +198,9 @@ export default function SuperAdminDemoRequestsPage() {
     };
 
     const handleSendLoginUrl = async (row: DemoRequestRow) => {
-        if (row.status !== 'closed') {
-            setMessage({ type: 'error', text: 'Set status to Closed before sending login URL.' });
+        const emailState = getAccessEmailState(row, nowMs);
+        if (!emailState.canSend) {
+            setMessage({ type: 'error', text: emailState.reason || 'Sending is temporarily unavailable' });
             return;
         }
 
@@ -225,6 +309,8 @@ export default function SuperAdminDemoRequestsPage() {
                         <div className="md:hidden space-y-3 p-3">
                             {rows.map((row) => {
                                 const isBusy = busyId === row.id;
+                                const isSendingLogin = sendingLoginForId === row.id;
+                                const emailState = getAccessEmailState(row, nowMs);
                                 return (
                                     <div key={row.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3 space-y-3">
                                         <div>
@@ -262,20 +348,26 @@ export default function SuperAdminDemoRequestsPage() {
 
                                         <div className="space-y-1">
                                             <button
-                                                disabled={sendingLoginForId === row.id || row.status !== 'closed'}
+                                                disabled={isSendingLogin || !emailState.canSend}
                                                 onClick={() => handleSendLoginUrl(row)}
                                                 className="w-full rounded-lg border border-white/10 bg-white/8 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                                             >
-                                                {sendingLoginForId === row.id
+                                                {isSendingLogin === true
                                                     ? 'Sending login URL...'
                                                     : row.login_page_email_sent_at
                                                         ? 'Resend Login URL'
                                                         : 'Send Login URL'}
                                             </button>
-                                            {row.login_page_email_sent_at && (
-                                                <p className="text-[11px] text-slate-500">
-                                                    Last sent: {formatDate(row.login_page_email_sent_at)}
-                                                </p>
+                                            <p className="text-[11px] text-slate-500">
+                                                {row.login_page_email_sent_at
+                                                    ? `Last sent: ${formatDate(row.login_page_email_sent_at)}`
+                                                    : 'Last sent: Never'}
+                                            </p>
+                                            <p className="text-[11px] text-slate-500">
+                                                Today: {emailState.sentToday}/{LOGIN_LINK_MAX_SENDS_PER_DAY} used
+                                            </p>
+                                            {!emailState.canSend && emailState.reason && (
+                                                <p className="text-[11px] text-amber-300/90">{emailState.reason}</p>
                                             )}
                                         </div>
                                     </div>
@@ -300,6 +392,7 @@ export default function SuperAdminDemoRequestsPage() {
                                     {rows.map((row) => {
                                         const isBusy = busyId === row.id;
                                         const isSendingLogin = sendingLoginForId === row.id;
+                                        const emailState = getAccessEmailState(row, nowMs);
                                         return (
                                             <tr key={row.id} className="border-b border-white/6 align-top hover:bg-white/[0.05] transition-colors">
                                                 <td className="px-4 py-3">
@@ -336,7 +429,7 @@ export default function SuperAdminDemoRequestsPage() {
                                                 <td className="px-4 py-3">
                                                     <div className="space-y-1">
                                                         <button
-                                                            disabled={isSendingLogin || row.status !== 'closed'}
+                                                            disabled={isSendingLogin || !emailState.canSend}
                                                             onClick={() => handleSendLoginUrl(row)}
                                                             className="rounded-lg border border-white/10 bg-white/8 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
@@ -348,10 +441,16 @@ export default function SuperAdminDemoRequestsPage() {
                                                         </button>
                                                         {row.login_page_email_sent_at ? (
                                                             <p className="text-[11px] text-slate-500 whitespace-nowrap">
-                                                                {formatDate(row.login_page_email_sent_at)}
+                                                                Last: {formatDate(row.login_page_email_sent_at)}
                                                             </p>
                                                         ) : (
-                                                            <p className="text-[11px] text-slate-600 whitespace-nowrap">Not sent</p>
+                                                            <p className="text-[11px] text-slate-600 whitespace-nowrap">Last: Never</p>
+                                                        )}
+                                                        <p className="text-[11px] text-slate-500 whitespace-nowrap">
+                                                            Today: {emailState.sentToday}/{LOGIN_LINK_MAX_SENDS_PER_DAY}
+                                                        </p>
+                                                        {!emailState.canSend && emailState.reason && (
+                                                            <p className="text-[11px] text-amber-300 whitespace-nowrap">{emailState.reason}</p>
                                                         )}
                                                     </div>
                                                 </td>
