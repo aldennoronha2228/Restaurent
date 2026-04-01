@@ -14,6 +14,7 @@ import { getApps } from 'firebase-admin/app';
 import { getStorage } from 'firebase-admin/storage';
 import { getOwnerEmailForRestaurant } from './reports';
 import { sendDemoRequestLoginUrlEmail, sendSubscriptionReminderEmail } from './email';
+import { getPlatformMaintenanceMode as getPlatformMaintenanceModeValue, setPlatformMaintenanceMode as setPlatformMaintenanceModeValue } from './platform-settings';
 
 // Types
 export interface PlatformStats {
@@ -1062,6 +1063,34 @@ export async function getGlobalLogs(
     } catch (error) {
         console.error('Error fetching logs:', error);
         return [];
+    }
+}
+
+// ─── Global Maintenance Mode ────────────────────────────────────────────────
+
+export async function getPlatformMaintenanceMode(): Promise<boolean> {
+    return getPlatformMaintenanceModeValue();
+}
+
+export async function setPlatformMaintenanceMode(
+    enabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        await setPlatformMaintenanceModeValue(enabled);
+
+        await logActivity(
+            enabled ? 'PLATFORM_MAINTENANCE_ENABLED' : 'PLATFORM_MAINTENANCE_DISABLED',
+            enabled ? 'Platform maintenance mode enabled' : 'Platform maintenance mode disabled',
+            enabled ? 'warning' : 'success',
+            { enabled }
+        );
+
+        revalidatePath('/');
+        revalidatePath('/maintenance');
+        revalidatePath('/super-admin');
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Failed to update maintenance mode' };
     }
 }
 

@@ -5,6 +5,9 @@ import { AuthProvider } from '@/context/AuthContext';
 import { SuperAdminAuthProvider } from '@/context/SuperAdminAuthContext';
 import { Toaster } from 'sonner';
 import { getSiteOrigin } from '@/lib/seo/url';
+import { getPlatformMaintenanceMode } from '@/lib/platform-settings';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
@@ -82,7 +85,30 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+function shouldBypassMaintenance(pathname: string): boolean {
+  return (
+    pathname === '/maintenance' ||
+    pathname.startsWith('/maintenance/') ||
+    pathname.startsWith('/super-admin') ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/change-password') ||
+    pathname.startsWith('/setup-password') ||
+    pathname.startsWith('/unauthorized')
+  );
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const h = await headers();
+  const pathname = h.get('x-pathname') || '/';
+  const maintenanceEnabled = await getPlatformMaintenanceMode();
+
+  if (maintenanceEnabled && !shouldBypassMaintenance(pathname)) {
+    redirect('/maintenance');
+  }
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={spaceGrotesk.className} suppressHydrationWarning>

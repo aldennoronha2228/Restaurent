@@ -196,6 +196,7 @@ export default function proxy(request: NextRequest) {
             headers: (() => {
                 const h = new Headers(request.headers);
                 h.set('x-nonce', nonce);
+                h.set('x-pathname', pathname);
                 return h;
             })(),
         },

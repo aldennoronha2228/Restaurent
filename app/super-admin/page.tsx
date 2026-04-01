@@ -10,9 +10,9 @@ import { motion } from 'motion/react';
 import { Geist } from 'next/font/google';
 import {
     Building2,
-    TrendingUp, RefreshCw, X, Check
+    TrendingUp, RefreshCw, X, Check, Wrench
 } from 'lucide-react';
-import { getPlatformStats, getGlobalLogs, type PlatformStats, type GlobalLog } from '@/lib/firebase-super-admin-actions';
+import { getPlatformStats, getGlobalLogs, getPlatformMaintenanceMode, setPlatformMaintenanceMode, type PlatformStats, type GlobalLog } from '@/lib/firebase-super-admin-actions';
 import { cn } from '@/lib/utils';
 
 const geist = Geist({ subsets: ['latin'] });
@@ -77,6 +77,9 @@ export default function SuperAdminOverview() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [selectedTier, setSelectedTier] = useState<'starter' | 'pro' | null>(null);
+    const [maintenanceMode, setMaintenanceMode] = useState(false);
+    const [savingMaintenance, setSavingMaintenance] = useState(false);
+    const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
 
     const tierFeatures = {
         starter: {
@@ -121,12 +124,14 @@ export default function SuperAdminOverview() {
 
     const loadData = async () => {
         try {
-            const [statsData, logsData] = await Promise.all([
+            const [statsData, logsData, maintenanceData] = await Promise.all([
                 getPlatformStats(),
                 getGlobalLogs(10),
+                getPlatformMaintenanceMode(),
             ]);
             setStats(statsData);
             setRecentLogs(logsData);
+            setMaintenanceMode(Boolean(maintenanceData));
         } catch (error) {
             console.error('Error loading super admin data:', error);
         } finally {
@@ -145,6 +150,23 @@ export default function SuperAdminOverview() {
     const handleRefresh = () => {
         setRefreshing(true);
         loadData();
+    };
+
+    const handleMaintenanceToggle = async () => {
+        setSavingMaintenance(true);
+        setMaintenanceMessage(null);
+
+        const nextValue = !maintenanceMode;
+        const result = await setPlatformMaintenanceMode(nextValue);
+
+        if (result.success) {
+            setMaintenanceMode(nextValue);
+            setMaintenanceMessage(nextValue ? 'Maintenance mode enabled. Public visitors are now blocked.' : 'Maintenance mode disabled. Website is live again.');
+        } else {
+            setMaintenanceMessage(result.error || 'Could not update maintenance mode. Please try again.');
+        }
+
+        setSavingMaintenance(false);
     };
 
     if (loading) {
@@ -267,6 +289,40 @@ export default function SuperAdminOverview() {
                     className="lg:col-span-5 rounded-3xl border border-white/8 bg-[#0b0b0c]/85 p-6"
                 >
                     <h2 className="text-lg font-semibold text-white mb-4">Quick Actions</h2>
+                    <button
+                        onClick={handleMaintenanceToggle}
+                        disabled={savingMaintenance}
+                        className={cn(
+                            'w-full flex items-center justify-between gap-3 p-4 rounded-2xl border transition-all mb-3 disabled:opacity-70',
+                            maintenanceMode
+                                ? 'bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/20'
+                                : 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20'
+                        )}
+                    >
+                        <div className="flex items-center gap-3 text-left">
+                            <div className={cn(
+                                'p-2 rounded-lg',
+                                maintenanceMode ? 'bg-rose-500/20' : 'bg-emerald-500/20'
+                            )}>
+                                <Wrench className={cn('w-5 h-5', maintenanceMode ? 'text-rose-300' : 'text-emerald-300')} strokeWidth={1.5} />
+                            </div>
+                            <div>
+                                <p className="text-white font-medium">Global Maintenance Mode</p>
+                                <p className="text-slate-400 text-xs">
+                                    {maintenanceMode ? 'Website is currently blocked for visitors' : 'Website is currently live for visitors'}
+                                </p>
+                            </div>
+                        </div>
+                        <span className={cn(
+                            'text-xs font-semibold px-2.5 py-1 rounded-full',
+                            maintenanceMode ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
+                        )}>
+                            {savingMaintenance ? 'Saving...' : maintenanceMode ? 'Turn Off' : 'Turn On'}
+                        </span>
+                    </button>
+                    {maintenanceMessage && (
+                        <p className="text-xs text-slate-300 mb-3">{maintenanceMessage}</p>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button
                             onClick={() => window.location.href = '/super-admin/restaurants'}

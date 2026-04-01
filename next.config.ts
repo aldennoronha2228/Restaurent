@@ -43,34 +43,17 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  async redirects() {
+  async rewrites() {
     return [
       {
-        source: '/code.html',
-        destination: '/',
-        permanent: false,
+        source: '/admin',
+        destination: '/super-admin',
+      },
+      {
+        source: '/admin/:path*',
+        destination: '/super-admin/:path*',
       },
     ];
-  },
-  async rewrites() {
-    return {
-      beforeFiles: [
-        {
-          source: '/',
-          destination: '/code.html',
-        },
-      ],
-      afterFiles: [
-        {
-          source: '/admin',
-          destination: '/super-admin',
-        },
-        {
-          source: '/admin/:path*',
-          destination: '/super-admin/:path*',
-        },
-      ],
-    };
   },
 };
 

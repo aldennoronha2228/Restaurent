@@ -21,11 +21,11 @@ export default function MaintenancePage() {
                 </h1>
 
                 <p className="text-slate-500 mb-10 leading-relaxed text-sm">
-                    We're currently making some updates to improve your experience.
-                    The menu will be back shortly!
+                    We are currently repairing and upgrading the platform.
+                    Please check back shortly.
                     <br /><br />
                     <span className="font-semibold text-slate-700 italic">
-                        "If you are an administrator, please sign in to view the site."
+                        Public access is temporarily blocked during maintenance.
                     </span>
                 </p>
 
@@ -51,6 +51,12 @@ export default function MaintenancePage() {
 
                 <div className="mt-12 text-[10px] text-slate-400 uppercase tracking-widest font-bold">
                     Powered by NexResto
+                </div>
+
+                <div className="mt-4">
+                    <Link href="/login?next=/super-admin" className="text-xs text-slate-500 hover:text-slate-700 underline underline-offset-4">
+                        Are you the developer?
+                    </Link>
                 </div>
             </div>
         </div>
