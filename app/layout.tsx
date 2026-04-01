@@ -107,9 +107,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const h = await headers();
   const pathname = h.get('x-pathname') || '/';
   const maintenanceEnabled = await getPlatformMaintenanceMode();
+  const isMaintenanceRoute = pathname === '/maintenance' || pathname.startsWith('/maintenance/');
 
   if (maintenanceEnabled && !shouldBypassMaintenance(pathname)) {
     redirect('/maintenance');
+  }
+
+  if (!maintenanceEnabled && isMaintenanceRoute) {
+    redirect('/');
   }
 
   return (

@@ -1,10 +1,39 @@
 'use client';
 
+import { useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Lock, Construction } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function MaintenancePage() {
+    const router = useRouter();
+
+    useEffect(() => {
+        let active = true;
+
+        const checkMaintenanceStatus = async () => {
+            try {
+                const res = await fetch('/api/platform/maintenance', { cache: 'no-store' });
+                if (!res.ok || !active) return;
+                const data = await res.json();
+                if (!data?.enabled && active) {
+                    router.replace('/');
+                }
+            } catch {
+                // Keep the current page if status check fails.
+            }
+        };
+
+        checkMaintenanceStatus();
+        const interval = window.setInterval(checkMaintenanceStatus, 2000);
+
+        return () => {
+            active = false;
+            window.clearInterval(interval);
+        };
+    }, [router]);
+
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-center">
             <div className="max-w-md w-full">
