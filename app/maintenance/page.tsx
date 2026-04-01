@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'motion/react';
-import { Lock, Construction, ArrowLeft } from 'lucide-react';
+import { Lock, Construction } from 'lucide-react';
 import Link from 'next/link';
 
 export default function MaintenancePage() {
@@ -39,13 +39,6 @@ export default function MaintenancePage() {
                             <Lock className="w-4 h-4" />
                             Admin Sign In
                         </motion.button>
-                    </Link>
-
-                    <Link href="/">
-                        <button className="flex items-center justify-center gap-2 text-slate-400 hover:text-slate-600 transition-colors mx-auto text-sm">
-                            <ArrowLeft className="w-4 h-4" />
-                            Back to Home
-                        </button>
                     </Link>
                 </div>
 

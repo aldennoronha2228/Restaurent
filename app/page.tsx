@@ -62,6 +62,15 @@ export default function RootPage() {
 
     let ticking = false;
 
+    const shouldRunParallax = () =>
+      !prefersReduced && window.innerWidth >= 1024 && parallaxNodes.length > 0;
+
+    const resetParallax = () => {
+      parallaxNodes.forEach((node) => {
+        node.style.transform = "translate3d(0, 0, 0)";
+      });
+    };
+
     const updateParallax = () => {
       const scrollY = window.scrollY || window.pageYOffset || 0;
       parallaxNodes.forEach((node) => {
@@ -82,23 +91,39 @@ export default function RootPage() {
 
     const onScroll = () => {
       updateScrollProgress();
-      if (prefersReduced || parallaxNodes.length === 0) return;
+      if (!shouldRunParallax()) {
+        resetParallax();
+        return;
+      }
       if (!ticking) {
         window.requestAnimationFrame(updateParallax);
         ticking = true;
       }
     };
 
+    const onResize = () => {
+      updateScrollProgress();
+      if (shouldRunParallax()) {
+        updateParallax();
+      } else {
+        resetParallax();
+      }
+    };
+
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", updateScrollProgress);
+    window.addEventListener("resize", onResize);
 
     updateScrollProgress();
-    if (!prefersReduced) updateParallax();
+    if (shouldRunParallax()) {
+      updateParallax();
+    } else {
+      resetParallax();
+    }
 
     return () => {
       if (observer) observer.disconnect();
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", updateScrollProgress);
+      window.removeEventListener("resize", onResize);
     };
   }, []);
 
@@ -331,7 +356,7 @@ export default function RootPage() {
             </div>
 
             <div className="reveal reveal-right" data-reveal>
-              <div className="surface-card rounded-xl p-6 parallax-node" data-parallax="0.04">
+              <div className="surface-card rounded-xl p-6">
                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8f8fa0]">Why Teams Switch</p>
                 <ul className="mt-4 space-y-3 text-sm text-[#c5c5d6]">
                   <li>Higher table throughput without sacrificing service quality.</li>

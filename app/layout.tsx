@@ -9,6 +9,9 @@ import { getPlatformMaintenanceMode } from '@/lib/platform-settings';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   display: 'swap',
