@@ -24,9 +24,10 @@ const STATUS_OPTIONS: Array<{ value: 'all' | DemoRequestStatus; label: string }>
 const LOGIN_LINK_COOLDOWN_MS = 10 * 60 * 1000;
 const LOGIN_LINK_MAX_SENDS_PER_DAY = 3;
 
-function formatDate(value: string): string {
+function formatDate(value: string | null): string {
+    if (!value) return '-';
     const dt = new Date(value);
-    if (Number.isNaN(dt.getTime())) return value;
+    if (Number.isNaN(dt.getTime())) return '-';
     return dt.toLocaleString('en-IN', {
         day: 'numeric',
         month: 'short',

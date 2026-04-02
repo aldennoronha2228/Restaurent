@@ -2,7 +2,7 @@
 
 import { memo, useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, AlertCircle, Loader2, ShieldCheck, LogOut } from 'lucide-react';
 import NexRestoLogo from '@/components/ui/NexRestoLogo';
 import { signInWithEmail, signInWithGoogle } from '@/lib/firebase-auth';
@@ -41,7 +41,28 @@ const Background = memo(function Background() {
     );
 });
 
-type FormMode = 'signin';
+const PasswordStrength = memo(function PasswordStrength({ password }: { password: string }) {
+    const checks = useMemo(() => [
+        { label: '8+ characters', pass: password.length >= 8 },
+        { label: 'Uppercase letter', pass: /[A-Z]/.test(password) },
+        { label: 'Number', pass: /\d/.test(password) },
+        { label: 'Special character', pass: /[^A-Za-z0-9]/.test(password) },
+    ], [password]);
+    const score = useMemo(() => checks.filter(c => c.pass).length, [checks]);
+    const colors = ['bg-rose-500', 'bg-orange-500', 'bg-amber-500', 'bg-emerald-500'];
+    const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+    return (
+        <div className="mt-2 space-y-2">
+            <div className="flex gap-1">{[0, 1, 2, 3].map(i => <div key={i} className={`flex-1 h-1 rounded-full transition-all duration-300 ${i < score ? colors[score - 1] : 'bg-slate-700'}`} />)}</div>
+            <div className="flex items-center justify-between">
+                <div className="flex flex-wrap gap-x-3 gap-y-1">{checks.map(c => <span key={c.label} className={`text-[10px] flex items-center gap-1 ${c.pass ? 'text-emerald-400' : 'text-slate-500'}`}><span>{c.pass ? '✓' : '○'}</span> {c.label}</span>)}</div>
+                {score > 0 && <span className={`text-xs font-medium ${score < 2 ? 'text-rose-400' : score < 4 ? 'text-amber-400' : 'text-emerald-400'}`}>{labels[score - 1]}</span>}
+            </div>
+        </div>
+    );
+});
+
+type FormMode = 'signin' | 'signup' | 'verify-otp';
 
 type ResolvedProfile = {
     role?: string;
@@ -59,9 +80,13 @@ export default function LoginPage() {
     const { session, loading, userRole, tenantLoading, tenantId, mustChangePassword } = useAuth();
     const { session: adminSession, loading: adminLoading, userRole: adminUserRole } = useSuperAdminAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [mode, setMode] = useState<FormMode>('signin');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [fullName, setFullName] = useState('');
+    const [restaurantName, setRestaurantName] = useState('');
+    const [masterPin, setMasterPin] = useState('');
     const [showPass, setShowPass] = useState(false);
     const [formLoading, setFormLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
@@ -69,12 +94,28 @@ export default function LoginPage() {
     const [signOutLoading, setSignOutLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [info, setInfo] = useState<string | null>(null);
+    const [enteredOtp, setEnteredOtp] = useState('');
+
+    const inviteToken = searchParams.get('invite') || '';
+    const inviteRequestId = searchParams.get('request') || '';
+    const inviteEmail = searchParams.get('email') || '';
+    const canCreateAccount = Boolean(inviteToken && inviteRequestId);
 
     const hasFirebasePublicConfig = Boolean(
         process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
         process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID &&
         process.env.NEXT_PUBLIC_FIREBASE_APP_ID
     );
+
+    useEffect(() => {
+        if (inviteEmail) {
+            setEmail(inviteEmail);
+        }
+        if (canCreateAccount) {
+            setMode('signup');
+            setInfo('Invite verified. Create your account to continue.');
+        }
+    }, [inviteEmail, canCreateAccount]);
 
     const resolveProfileWithRetry = async (user: User, attempts = 4): Promise<ResolvedProfile | null> => {
         for (let i = 0; i < attempts; i++) {
@@ -141,6 +182,54 @@ export default function LoginPage() {
             setError('Hosted environment is missing Firebase public config. Set NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_PROJECT_ID, and NEXT_PUBLIC_FIREBASE_APP_ID in your deployment environment.');
             return;
         }
+
+        if (mode === 'signup') {
+            if (!canCreateAccount) {
+                setError('Account creation is allowed only through your secure email invite link.');
+                return;
+            }
+            if (!email || !password || !fullName || !restaurantName || !masterPin) {
+                setError('Please fill in all account creation fields.');
+                return;
+            }
+            if (password.length < 8) {
+                setError('Password must be at least 8 characters.');
+                return;
+            }
+            if (masterPin.length < 4) {
+                setError('Master PIN must be at least 4 characters.');
+                return;
+            }
+
+            setFormLoading(true); setError(null); setInfo(null);
+            try {
+                const res = await fetch('/api/auth/signup-init', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email,
+                        password,
+                        fullName,
+                        restaurantName,
+                        masterPin,
+                        inviteToken,
+                        requestId: inviteRequestId,
+                    }),
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Failed to initialize signup');
+
+                setMode('verify-otp');
+                setInfo('Check your email for the 6-digit verification code.');
+            } catch (err: any) {
+                setError(err?.message || 'Could not start account creation.');
+            } finally {
+                setFormLoading(false);
+            }
+            return;
+        }
+
         if (!email || !password) { setError('Please fill in all fields.'); return; }
         if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
         setFormLoading(true); setError(null); setInfo(null);
@@ -148,60 +237,60 @@ export default function LoginPage() {
             let userCredential;
             let savedCustomToken: string | null = null;
 
-                try {
-                    // Fast path for the majority of users.
-                    userCredential = await signInWithEmail(email, password);
-                } catch (tenantAuthError: any) {
-                    const code = String(tenantAuthError?.code || '');
-                    const isCredentialError =
-                        code === 'auth/invalid-credential' ||
-                        code === 'auth/wrong-password' ||
-                        code === 'auth/user-not-found' ||
-                        code === 'auth/invalid-email';
-                    const shouldTryAdminFallback =
-                        isCredentialError ||
-                        code === 'auth/internal-error';
+            try {
+                // Fast path for the majority of users.
+                userCredential = await signInWithEmail(email, password);
+            } catch (tenantAuthError: any) {
+                const code = String(tenantAuthError?.code || '');
+                const isCredentialError =
+                    code === 'auth/invalid-credential' ||
+                    code === 'auth/wrong-password' ||
+                    code === 'auth/user-not-found' ||
+                    code === 'auth/invalid-email';
+                const shouldTryAdminFallback =
+                    isCredentialError ||
+                    code === 'auth/internal-error';
 
-                    if (!shouldTryAdminFallback) throw tenantAuthError;
+                if (!shouldTryAdminFallback) throw tenantAuthError;
 
-                    // Fallback for super-admin credentials synced via .env route.
-                    const adminVerifyRes = await fetch('/api/auth/admin-verify', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email, password }),
-                    });
-
-                    if (!adminVerifyRes.ok) {
-                        throw tenantAuthError;
-                    }
-
-                    const data = await adminVerifyRes.json();
-                    savedCustomToken = data.customToken;
-                    if (!savedCustomToken) throw new Error('Admin verification did not return a token.');
-
-                    const { signInWithToken } = await import('@/lib/firebase-auth');
-                    userCredential = await signInWithToken(savedCustomToken);
-                }
-
-                const user = userCredential.user;
-                const [idToken, tokenResult] = await Promise.all([
-                    user.getIdToken(),
-                    user.getIdTokenResult().catch(() => null),
-                ]);
-
-                // For all users, fetch profile to resolve orientation/dashboard
-                const profileRes = await fetch('/api/auth/profile', {
-                    headers: { Authorization: `Bearer ${idToken}` },
+                // Fallback for super-admin credentials synced via .env route.
+                const adminVerifyRes = await fetch('/api/auth/admin-verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
                 });
 
-                if (profileRes.ok) {
-                    const { profile } = await profileRes.json();
-                    if (profile?.must_change_password) {
-                        router.replace('/change-password');
-                        return;
-                    }
+                if (!adminVerifyRes.ok) {
+                    throw tenantAuthError;
+                }
 
-                    if (profile?.role === 'super_admin') {
+                const data = await adminVerifyRes.json();
+                savedCustomToken = data.customToken;
+                if (!savedCustomToken) throw new Error('Admin verification did not return a token.');
+
+                const { signInWithToken } = await import('@/lib/firebase-auth');
+                userCredential = await signInWithToken(savedCustomToken);
+            }
+
+            const user = userCredential.user;
+            const [idToken, tokenResult] = await Promise.all([
+                user.getIdToken(),
+                user.getIdTokenResult().catch(() => null),
+            ]);
+
+            // For all users, fetch profile to resolve orientation/dashboard
+            const profileRes = await fetch('/api/auth/profile', {
+                headers: { Authorization: `Bearer ${idToken}` },
+            });
+
+            if (profileRes.ok) {
+                const { profile } = await profileRes.json();
+                if (profile?.must_change_password) {
+                    router.replace('/change-password');
+                    return;
+                }
+
+                if (profile?.role === 'super_admin') {
                         // Store the custom token so the super-admin page can
                         // sign into its isolated adminAuth instance without blocking login.
                         if (savedCustomToken) {
@@ -213,39 +302,39 @@ export default function LoginPage() {
                                 console.warn('Could not seed adminAuth instance with email/password:', seedErr);
                             }
                         }
-                        router.replace('/super-admin');
-                        return;
-                    }
-                    if (profile?.role && profile?.tenant_id) {
-                        router.replace(`/${profile.tenant_id}/dashboard/orders`);
-                        return;
-                    }
-                }
-
-                if (tokenResult?.claims?.must_change_password) {
-                    router.replace('/change-password');
-                    return;
-                }
-
-                const fallbackRole = tokenResult?.claims?.role as string | undefined;
-                const fallbackTenant = tokenResult?.claims?.tenant_id || tokenResult?.claims?.restaurant_id;
-                if (fallbackRole === 'super_admin') {
-                    if (savedCustomToken) {
-                        sessionStorage.setItem('pending_admin_token', savedCustomToken);
-                    } else {
-                        try {
-                            await signInWithEmailAndPassword(adminAuth, email, password);
-                        } catch (seedErr) {
-                            console.warn('Could not seed adminAuth instance with fallback role:', seedErr);
-                        }
-                    }
                     router.replace('/super-admin');
                     return;
                 }
-                if (fallbackRole && fallbackTenant) {
-                    router.replace(`/${fallbackTenant}/dashboard/orders`);
+                if (profile?.role && profile?.tenant_id) {
+                    router.replace(`/${profile.tenant_id}/dashboard/orders`);
                     return;
                 }
+            }
+
+            if (tokenResult?.claims?.must_change_password) {
+                router.replace('/change-password');
+                return;
+            }
+
+            const fallbackRole = tokenResult?.claims?.role as string | undefined;
+            const fallbackTenant = tokenResult?.claims?.tenant_id || tokenResult?.claims?.restaurant_id;
+            if (fallbackRole === 'super_admin') {
+                if (savedCustomToken) {
+                    sessionStorage.setItem('pending_admin_token', savedCustomToken);
+                } else {
+                    try {
+                        await signInWithEmailAndPassword(adminAuth, email, password);
+                    } catch (seedErr) {
+                        console.warn('Could not seed adminAuth instance with fallback role:', seedErr);
+                    }
+                }
+                router.replace('/super-admin');
+                return;
+            }
+            if (fallbackRole && fallbackTenant) {
+                router.replace(`/${fallbackTenant}/dashboard/orders`);
+                return;
+            }
 
             // If we reach here, no valid dashboard role found
             router.replace('/unauthorized');
@@ -278,6 +367,43 @@ export default function LoginPage() {
                 message: msg,
             });
         } finally { setFormLoading(false); }
+    };
+
+    const handleVerifyOtp = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!canCreateAccount) {
+            setError('Account creation is allowed only through your secure email invite link.');
+            return;
+        }
+        if (!enteredOtp || enteredOtp.length !== 6) {
+            setError('Please enter the 6-digit verification code.');
+            return;
+        }
+
+        setFormLoading(true); setError(null);
+        try {
+            const res = await fetch('/api/auth/signup-verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email,
+                    otp: enteredOtp,
+                    inviteToken,
+                    requestId: inviteRequestId,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Verification failed');
+
+            setInfo('Account created successfully! You can now sign in.');
+            setMode('signin');
+            setEnteredOtp('');
+            setPassword('');
+        } catch (err: any) {
+            setError(err?.message ?? 'Verification failed');
+        } finally {
+            setFormLoading(false);
+        }
     };
 
     const handleGoogle = async () => {
@@ -410,8 +536,25 @@ export default function LoginPage() {
                             </motion.div>
 
                             <div className="mb-6 rounded-xl border border-slate-700/60 bg-slate-800/40 p-3 text-center text-xs text-slate-300">
-                                New accounts are invite-only and created through secure email links.
+                                {canCreateAccount
+                                    ? 'Invite link detected. You can create an account for this email only.'
+                                    : 'New accounts are invite-only and created through secure email links.'}
                             </div>
+
+                            {canCreateAccount && mode !== 'verify-otp' && (
+                                <div className="flex gap-1 p-1 bg-slate-800/60 rounded-xl mb-6">
+                                    {(['signin', 'signup'] as const).map((m) => (
+                                        <button
+                                            key={m}
+                                            onClick={() => { setMode(m); setError(null); setInfo(null); }}
+                                            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${mode === m ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25' : 'text-slate-400 hover:text-white'}`}
+                                            type="button"
+                                        >
+                                            {m === 'signin' ? 'Sign In' : 'Create Account'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
 
                             <AnimatePresence mode="wait">
                                 {error && (
@@ -432,45 +575,81 @@ export default function LoginPage() {
                                 )}
                             </AnimatePresence>
 
-                            <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Email</label>
-                                    <div className="relative">
-                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                        <input suppressHydrationWarning type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@restaurant.com" autoComplete="email" required className="w-full h-12 pl-11 pr-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all" />
+                            {mode === 'verify-otp' ? (
+                                <form onSubmit={handleVerifyOtp} className="space-y-4 text-left">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Enter Verification Code</label>
+                                        <input suppressHydrationWarning type="text" value={enteredOtp} onChange={e => setEnteredOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" maxLength={6} className="w-full h-14 px-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white text-center text-2xl font-mono tracking-[0.3em] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/40 transition-all" />
                                     </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Password</label>
-                                    <div className="relative">
-                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                        <input suppressHydrationWarning type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" required className="w-full h-12 pl-11 pr-12 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all" />
-                                        <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-                                            {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                        </button>
+                                    <motion.button type="submit" disabled={formLoading || enteredOtp.length !== 6} whileHover={{ scale: formLoading ? 1 : 1.02 }} whileTap={{ scale: formLoading ? 1 : 0.98 }} className="w-full h-12 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                                        {formLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Verifying...</> : 'Verify & Create Account →'}
+                                    </motion.button>
+                                    <button type="button" onClick={() => { setMode('signup'); setEnteredOtp(''); setError(null); }} className="w-full h-10 text-slate-400 hover:text-white text-sm transition-colors">← Back to signup</button>
+                                </form>
+                            ) : (
+                                <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
+                                    {mode === 'signup' && canCreateAccount && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Full Name</label>
+                                                <input suppressHydrationWarning type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="John Smith" autoComplete="name" className="w-full h-12 px-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Restaurant Name</label>
+                                                <input suppressHydrationWarning type="text" value={restaurantName} onChange={e => setRestaurantName(e.target.value)} placeholder="e.g. The Grand Bistro" autoComplete="organization" className="w-full h-12 px-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Master PIN</label>
+                                                <input suppressHydrationWarning type="text" value={masterPin} onChange={e => setMasterPin(e.target.value)} placeholder="e.g. 1234 or MySecretPin" autoComplete="off" className="w-full h-12 px-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all font-mono" />
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Email</label>
+                                        <div className="relative">
+                                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                                            <input suppressHydrationWarning type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@restaurant.com" autoComplete="email" required className="w-full h-12 pl-11 pr-4 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all" disabled={Boolean(inviteEmail)} />
+                                        </div>
                                     </div>
-                                    <div className="mt-2 flex justify-end">
-                                        <button
-                                            type="button"
-                                            onClick={handleForgotPassword}
-                                            disabled={resetLoading || formLoading || googleLoading}
-                                            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-60"
-                                        >
-                                            {resetLoading ? 'Sending reset email...' : 'Forgot Password?'}
-                                        </button>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Password</label>
+                                        <div className="relative">
+                                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                                            <input suppressHydrationWarning type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'Minimum 8 characters' : '••••••••'} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required className="w-full h-12 pl-11 pr-12 bg-slate-800/60 border border-slate-700/60 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all" />
+                                            <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                                                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
+                                        {mode === 'signin' && (
+                                            <div className="mt-2 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleForgotPassword}
+                                                    disabled={resetLoading || formLoading || googleLoading}
+                                                    className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-60"
+                                                >
+                                                    {resetLoading ? 'Sending reset email...' : 'Forgot Password?'}
+                                                </button>
+                                            </div>
+                                        )}
+                                        {mode === 'signup' && password && <PasswordStrength password={password} />}
                                     </div>
-                                </div>
-                                <motion.button type="submit" disabled={formLoading} whileHover={{ scale: formLoading ? 1 : 1.02 }} whileTap={{ scale: formLoading ? 1 : 0.98 }} className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
-                                    {formLoading ? (<><Loader2 className="w-4 h-4 animate-spin" />Signing in…</>) : 'Sign In →'}
-                                </motion.button>
-                            </form>
+                                    <motion.button type="submit" disabled={formLoading} whileHover={{ scale: formLoading ? 1 : 1.02 }} whileTap={{ scale: formLoading ? 1 : 0.98 }} className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                                        {formLoading ? (<><Loader2 className="w-4 h-4 animate-spin" />{mode === 'signin' ? 'Signing in…' : 'Creating account…'}</>) : (mode === 'signin' ? 'Sign In →' : 'Create Account →')}
+                                    </motion.button>
+                                </form>
+                            )}
 
-                            <div className="flex items-center gap-3 my-5"><div className="flex-1 h-px bg-slate-700/60" /><span className="text-xs text-slate-500 font-medium">or continue with</span><div className="flex-1 h-px bg-slate-700/60" /></div>
+                            {mode === 'signin' && (
+                                <>
+                                    <div className="flex items-center gap-3 my-5"><div className="flex-1 h-px bg-slate-700/60" /><span className="text-xs text-slate-500 font-medium">or continue with</span><div className="flex-1 h-px bg-slate-700/60" /></div>
 
-                            <motion.button onClick={handleGoogle} disabled={googleLoading} whileHover={{ scale: googleLoading ? 1 : 1.02 }} whileTap={{ scale: googleLoading ? 1 : 0.98 }} className="w-full h-12 flex items-center justify-center gap-3 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-500/60 text-white rounded-xl font-medium text-sm transition-all disabled:opacity-60">
-                                {googleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GoogleIcon />}
-                                {googleLoading ? 'Redirecting to Google…' : 'Sign in with Google'}
-                            </motion.button>
+                                    <motion.button onClick={handleGoogle} disabled={googleLoading} whileHover={{ scale: googleLoading ? 1 : 1.02 }} whileTap={{ scale: googleLoading ? 1 : 0.98 }} className="w-full h-12 flex items-center justify-center gap-3 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-500/60 text-white rounded-xl font-medium text-sm transition-all disabled:opacity-60">
+                                        {googleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GoogleIcon />}
+                                        {googleLoading ? 'Redirecting to Google…' : 'Sign in with Google'}
+                                    </motion.button>
+                                </>
+                            )}
 
                             <motion.button
                                 type="button"

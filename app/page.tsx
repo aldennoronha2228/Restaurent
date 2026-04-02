@@ -170,13 +170,13 @@ export default function RootPage() {
 
           <div className="flex items-center gap-2">
             <Link
-              className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+              className="rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10 sm:px-4 sm:py-2 sm:text-sm"
               href="/login"
             >
               Login
             </Link>
             <button
-              className="rounded-full bg-[#3e54d3] px-5 py-2 text-sm font-semibold text-[#d8dbff] transition hover:opacity-90"
+              className="rounded-full bg-[#3e54d3] px-4 py-1.5 text-xs font-semibold text-[#d8dbff] transition hover:opacity-90 sm:px-5 sm:py-2 sm:text-sm"
               onClick={scrollToDemo}
               type="button"
             >

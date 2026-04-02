@@ -12,6 +12,7 @@ import { revalidatePath } from 'next/cache';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getApps } from 'firebase-admin/app';
 import { getStorage } from 'firebase-admin/storage';
+import { createHash, randomBytes } from 'crypto';
 import { getOwnerEmailForRestaurant } from './reports';
 import { sendDemoRequestLoginUrlEmail, sendSubscriptionReminderEmail } from './email';
 import { getPlatformMaintenanceMode as getPlatformMaintenanceModeValue, setPlatformMaintenanceMode as setPlatformMaintenanceModeValue } from './platform-settings';
@@ -113,7 +114,7 @@ export interface DemoRequestRow {
     qr_requirements: string;
     status: DemoRequestStatus;
     source: string;
-    created_at: string;
+    created_at: string | null;
     updated_at: string | null;
     notes: string | null;
     login_page_email_sent_at: string | null;
@@ -584,6 +585,7 @@ const DEMO_REQUEST_STATUS_SET = new Set<DemoRequestStatus>([
 const DEMO_LOGIN_LINK_COOLDOWN_MS = 10 * 60 * 1000;
 const DEMO_LOGIN_LINK_MAX_SENDS_PER_DAY = 3;
 const DEMO_REQUEST_LOGIN_URL = 'https://nexresto.in/login';
+const DEMO_SIGNUP_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function getDemoRequests(filters?: {
     status?: 'all' | DemoRequestStatus;
@@ -603,6 +605,12 @@ export async function getDemoRequests(filters?: {
             const d = doc.data() || {};
             const statusRaw = String(d.status || 'new').trim().toLowerCase() as DemoRequestStatus;
             const status: DemoRequestStatus = DEMO_REQUEST_STATUS_SET.has(statusRaw) ? statusRaw : 'new';
+            const createdAt =
+                toIsoString(d.created_at) ||
+                toIsoString(d.createdAt) ||
+                toIsoString(d.requested_at) ||
+                toIsoString(d.submitted_at) ||
+                toIsoString(doc.createTime);
 
             return {
                 id: doc.id,
@@ -614,7 +622,7 @@ export async function getDemoRequests(filters?: {
                 qr_requirements: String(d.qr_requirements || ''),
                 status,
                 source: String(d.source || 'website'),
-                created_at: toIsoString(d.created_at) || new Date(0).toISOString(),
+                created_at: createdAt,
                 updated_at: toIsoString(d.updated_at),
                 notes: d.notes ? String(d.notes) : null,
                 login_page_email_sent_at: toIsoString(d.login_page_email_sent_at),
@@ -742,7 +750,10 @@ export async function sendDemoRequestLoginLink(
 
         const contactName = String(data.contact_name || 'there').trim();
         const restaurantName = String(data.restaurant_name || 'your restaurant').trim();
-        const loginUrl = DEMO_REQUEST_LOGIN_URL;
+        const inviteToken = randomBytes(24).toString('hex');
+        const inviteTokenHash = createHash('sha256').update(inviteToken).digest('hex');
+        const inviteExpiresAtIso = new Date(nowMs + DEMO_SIGNUP_INVITE_TTL_MS).toISOString();
+        const loginUrl = `${DEMO_REQUEST_LOGIN_URL}?request=${encodeURIComponent(requestId)}&invite=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(businessEmail)}`;
 
         const mailResult = await sendDemoRequestLoginUrlEmail({
             to: businessEmail,
@@ -762,6 +773,10 @@ export async function sendDemoRequestLoginLink(
             login_page_email_to: businessEmail,
             login_page_email_provider_id: mailResult.providerMessageId || null,
             login_page_url: loginUrl,
+            signup_invite_token_hash: inviteTokenHash,
+            signup_invite_token_expires_at: inviteExpiresAtIso,
+            signup_invite_token_used_at: null,
+            signup_invite_token_sent_to: businessEmail,
             login_page_email_last_sent_on: todayYmd,
             login_page_email_send_count: nextSendCount,
             updated_at: FieldValue.serverTimestamp(),
