@@ -57,6 +57,40 @@ function formatDate(value: unknown): string {
         return '-';
     }
 
+    if (typeof value === 'number') {
+        const millis = value < 1e12 ? value * 1000 : value;
+        const numericDt = new Date(millis);
+        if (!Number.isNaN(numericDt.getTime())) {
+            return numericDt.toLocaleString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        }
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (/^\d+$/.test(trimmed)) {
+            const numeric = Number(trimmed);
+            if (Number.isFinite(numeric)) {
+                const millis = numeric < 1e12 ? numeric * 1000 : numeric;
+                const numericDt = new Date(millis);
+                if (!Number.isNaN(numericDt.getTime())) {
+                    return numericDt.toLocaleString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                    });
+                }
+            }
+        }
+    }
+
     const dt = new Date(value);
     if (Number.isNaN(dt.getTime())) return '-';
     return dt.toLocaleString('en-IN', {

@@ -563,8 +563,25 @@ function toIsoString(value: unknown): string | null {
             return null;
         }
 
-        if (typeof value === 'string' || typeof value === 'number') {
-            const parsed = new Date(value);
+        if (typeof value === 'number') {
+            // Treat small values as unix seconds; larger values as unix milliseconds.
+            const millis = value < 1e12 ? value * 1000 : value;
+            const parsed = new Date(millis);
+            if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+        }
+
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (/^\d+$/.test(trimmed)) {
+                const numeric = Number(trimmed);
+                if (Number.isFinite(numeric)) {
+                    const millis = numeric < 1e12 ? numeric * 1000 : numeric;
+                    const parsedNumeric = new Date(millis);
+                    if (!Number.isNaN(parsedNumeric.getTime())) return parsedNumeric.toISOString();
+                }
+            }
+
+            const parsed = new Date(trimmed);
             if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
         }
 
