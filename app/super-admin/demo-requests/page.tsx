@@ -25,6 +25,33 @@ const LOGIN_LINK_COOLDOWN_MS = 10 * 60 * 1000;
 const LOGIN_LINK_MAX_SENDS_PER_DAY = 3;
 
 function formatDate(value: unknown): string {
+    const toNumeric = (input: unknown): number => {
+        if (typeof input === 'number') return input;
+        if (typeof input === 'string') {
+            const n = Number(input.trim());
+            return Number.isFinite(n) ? n : NaN;
+        }
+        if (typeof input === 'object' && input !== null) {
+            const candidate = input as {
+                toNumber?: () => number;
+                low?: unknown;
+                high?: unknown;
+                unsigned?: unknown;
+            };
+            if (typeof candidate.toNumber === 'function') {
+                const n = candidate.toNumber();
+                return Number.isFinite(n) ? n : NaN;
+            }
+            if (typeof candidate.low === 'number' && typeof candidate.high === 'number') {
+                const unsigned = Boolean(candidate.unsigned);
+                const low = unsigned ? (candidate.low >>> 0) : candidate.low;
+                const high = unsigned ? (candidate.high >>> 0) : candidate.high;
+                return high * 4294967296 + low;
+            }
+        }
+        return NaN;
+    };
+
     if (!value) return '-';
 
     if (typeof value === 'object') {
@@ -36,8 +63,8 @@ function formatDate(value: unknown): string {
         };
         const secondsRaw = maybeTs.seconds ?? maybeTs._seconds;
         const nanosRaw = maybeTs.nanoseconds ?? maybeTs._nanoseconds;
-        const seconds = Number(secondsRaw);
-        const nanos = Number(nanosRaw || 0);
+        const seconds = toNumeric(secondsRaw);
+        const nanos = toNumeric(nanosRaw || 0);
         if (Number.isFinite(seconds) && Number.isFinite(nanos)) {
             const millis = Math.floor(seconds * 1000 + nanos / 1_000_000);
             const dt = new Date(millis);
