@@ -41,6 +41,13 @@ function isInactiveBeyondLimit(storageKey: string): boolean {
     return Date.now() - lastMs > SESSION_INACTIVITY_LIMIT_MS;
 }
 
+function isRecentSignIn(user: User, windowMs: number = 2 * 60 * 1000): boolean {
+    const raw = user.metadata?.lastSignInTime || '';
+    const signedInAtMs = Date.parse(raw);
+    if (!Number.isFinite(signedInAtMs)) return false;
+    return Date.now() - signedInAtMs <= windowMs;
+}
+
 type SubscriptionTier = 'starter' | 'pro' | '1k' | '2k' | '2.5k';
 type SubscriptionStatus = 'active' | 'past_due' | 'cancelled' | 'trial';
 
@@ -394,7 +401,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     return;
                 }
 
-                if (isInactiveBeyondLimit(TENANT_LAST_ACTIVITY_KEY)) {
+                if (!isRecentSignIn(user) && isInactiveBeyondLimit(TENANT_LAST_ACTIVITY_KEY)) {
                     await authSignOut();
                     if (isActive) {
                         setState({

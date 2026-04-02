@@ -42,6 +42,13 @@ function isInactiveBeyondLimit(storageKey: string): boolean {
     return Date.now() - lastMs > SESSION_INACTIVITY_LIMIT_MS;
 }
 
+function isRecentSignIn(user: User, windowMs: number = 2 * 60 * 1000): boolean {
+    const raw = user.metadata?.lastSignInTime || '';
+    const signedInAtMs = Date.parse(raw);
+    if (!Number.isFinite(signedInAtMs)) return false;
+    return Date.now() - signedInAtMs <= windowMs;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SuperAdminAuthState {
@@ -149,7 +156,7 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
-            if (isInactiveBeyondLimit(SUPER_ADMIN_LAST_ACTIVITY_KEY)) {
+            if (!isRecentSignIn(user) && isInactiveBeyondLimit(SUPER_ADMIN_LAST_ACTIVITY_KEY)) {
                 await firebaseSignOut(adminAuth);
                 if (isActive) {
                     hasRoleRef.current = false;
