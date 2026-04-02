@@ -19,6 +19,28 @@ import { signOut as authSignOut, clearStaleSession } from '@/lib/firebase-auth';
 import { securityLog } from '@/lib/logger';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 
+const SESSION_INACTIVITY_LIMIT_MS = 7 * 24 * 60 * 60 * 1000;
+const TENANT_LAST_ACTIVITY_KEY = 'nexresto-tenant-last-activity-at';
+
+function readLastActivityMs(storageKey: string): number | null {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const ms = Number(raw);
+    return Number.isFinite(ms) ? ms : null;
+}
+
+function writeLastActivityNow(storageKey: string): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(storageKey, String(Date.now()));
+}
+
+function isInactiveBeyondLimit(storageKey: string): boolean {
+    const lastMs = readLastActivityMs(storageKey);
+    if (!lastMs) return false;
+    return Date.now() - lastMs > SESSION_INACTIVITY_LIMIT_MS;
+}
+
 type SubscriptionTier = 'starter' | 'pro' | '1k' | '2k' | '2.5k';
 type SubscriptionStatus = 'active' | 'past_due' | 'cancelled' | 'trial';
 
@@ -265,6 +287,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resolvedUidRef = useRef<string | null>(null);
     const tenantSyncUnsubRef = useRef<(() => void) | null>(null);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        let rafId: number | null = null;
+        const markActivity = () => {
+            if (rafId !== null) return;
+            rafId = window.requestAnimationFrame(() => {
+                writeLastActivityNow(TENANT_LAST_ACTIVITY_KEY);
+                rafId = null;
+            });
+        };
+
+        const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+        events.forEach((eventName) => {
+            window.addEventListener(eventName, markActivity, { passive: true });
+        });
+
+        markActivity();
+
+        return () => {
+            events.forEach((eventName) => {
+                window.removeEventListener(eventName, markActivity);
+            });
+            if (rafId !== null) window.cancelAnimationFrame(rafId);
+        };
+    }, []);
+
     // Refresh tenant info on demand (e.g. after signup completes)
     const refreshTenant = async () => {
         const user = state.user;
@@ -344,6 +393,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     }
                     return;
                 }
+
+                if (isInactiveBeyondLimit(TENANT_LAST_ACTIVITY_KEY)) {
+                    await authSignOut();
+                    if (isActive) {
+                        setState({
+                            session: null,
+                            user: null,
+                            isAdmin: false,
+                            userRole: null,
+                            tenantId: null,
+                            tenantName: null,
+                            subscriptionTier: null,
+                            subscriptionStatus: null,
+                            subscriptionEndDate: null,
+                            subscriptionDaysRemaining: null,
+                            isImpersonating: false,
+                            mustChangePassword: false,
+                            loading: false,
+                            tenantLoading: false,
+                            error: null,
+                        });
+                    }
+                    return;
+                }
+
+                writeLastActivityNow(TENANT_LAST_ACTIVITY_KEY);
 
                 let idToken = '';
                 try {

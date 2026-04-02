@@ -20,6 +20,28 @@ import { onAuthStateChanged, signOut as firebaseSignOut, type User } from 'fireb
 import { adminAuth, ADMIN_SESSION_KEY } from '@/lib/firebase';
 import { securityLog } from '@/lib/logger';
 
+const SESSION_INACTIVITY_LIMIT_MS = 7 * 24 * 60 * 60 * 1000;
+const SUPER_ADMIN_LAST_ACTIVITY_KEY = 'nexresto-super-admin-last-activity-at';
+
+function readLastActivityMs(storageKey: string): number | null {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const ms = Number(raw);
+    return Number.isFinite(ms) ? ms : null;
+}
+
+function writeLastActivityNow(storageKey: string): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(storageKey, String(Date.now()));
+}
+
+function isInactiveBeyondLimit(storageKey: string): boolean {
+    const lastMs = readLastActivityMs(storageKey);
+    if (!lastMs) return false;
+    return Date.now() - lastMs > SESSION_INACTIVITY_LIMIT_MS;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SuperAdminAuthState {
@@ -54,6 +76,33 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
 
     const hasInitialized = useRef(false);
     const hasRoleRef = useRef(false);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        let rafId: number | null = null;
+        const markActivity = () => {
+            if (rafId !== null) return;
+            rafId = window.requestAnimationFrame(() => {
+                writeLastActivityNow(SUPER_ADMIN_LAST_ACTIVITY_KEY);
+                rafId = null;
+            });
+        };
+
+        const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+        events.forEach((eventName) => {
+            window.addEventListener(eventName, markActivity, { passive: true });
+        });
+
+        markActivity();
+
+        return () => {
+            events.forEach((eventName) => {
+                window.removeEventListener(eventName, markActivity);
+            });
+            if (rafId !== null) window.cancelAnimationFrame(rafId);
+        };
+    }, []);
 
     useEffect(() => {
         let isActive = true;
@@ -99,6 +148,24 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
                 }
                 return;
             }
+
+            if (isInactiveBeyondLimit(SUPER_ADMIN_LAST_ACTIVITY_KEY)) {
+                await firebaseSignOut(adminAuth);
+                if (isActive) {
+                    hasRoleRef.current = false;
+                    setState({
+                        session: null,
+                        user: null,
+                        loading: false,
+                        roleLoading: false,
+                        error: null,
+                        userRole: null,
+                    });
+                }
+                return;
+            }
+
+            writeLastActivityNow(SUPER_ADMIN_LAST_ACTIVITY_KEY);
 
             const idToken = await user.getIdToken();
 

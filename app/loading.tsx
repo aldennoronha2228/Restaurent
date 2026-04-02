@@ -1,6 +1,6 @@
 export default function RootLoading() {
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#f4f4f5]">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#030712]">
             <div className="flex flex-col items-center gap-4">
                 <svg
                     className="h-28 w-28 sm:h-32 sm:w-32"
@@ -52,7 +52,7 @@ export default function RootLoading() {
                         </path>
                     </g>
                 </svg>
-                <p className="text-xs tracking-[0.2em] text-[#6b7280]">LOADING</p>
+                <p className="text-xs tracking-[0.2em] text-slate-300">LOADING</p>
             </div>
         </div>
     );
