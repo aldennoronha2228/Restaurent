@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
@@ -20,7 +20,7 @@ const spaceGrotesk = Space_Grotesk({
   fallback: ['Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
 });
 const siteOrigin = getSiteOrigin();
-const iconVersion = '20260402a';
+const iconVersion = '20260402b';
 const siteUrl = new URL('/', siteOrigin).toString();
 const brandLogoUrl = new URL('/nexresto-logo-current.png', siteOrigin).toString();
 const brandIconUrl = new URL('/icon-512.png', siteOrigin).toString();
@@ -115,6 +115,11 @@ export const metadata: Metadata = {
     shortcut: `/favicon.png?v=${iconVersion}`,
     apple: `/apple-touch-icon.png?v=${iconVersion}`,
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#030712',
+  colorScheme: 'dark',
 };
 
 function shouldBypassMaintenance(pathname: string): boolean {
