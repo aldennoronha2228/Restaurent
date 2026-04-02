@@ -53,6 +53,10 @@ function formatDate(value: unknown): string {
         }
     }
 
+    if (!(typeof value === 'string' || typeof value === 'number' || value instanceof Date)) {
+        return '-';
+    }
+
     const dt = new Date(value);
     if (Number.isNaN(dt.getTime())) return '-';
     return dt.toLocaleString('en-IN', {
