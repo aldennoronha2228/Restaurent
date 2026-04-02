@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { SuperAdminAuthProvider } from '@/context/SuperAdminAuthContext';
 import { Toaster } from 'sonner';
+import AppBootSplash from '@/components/ui/AppBootSplash';
 import { getSiteOrigin } from '@/lib/seo/url';
 import { getPlatformMaintenanceMode } from '@/lib/platform-settings';
 import { headers } from 'next/headers';
@@ -148,6 +149,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={spaceGrotesk.className} suppressHydrationWarning>
+        <AppBootSplash />
         <script
           id="schema-org-organization"
           type="application/ld+json"
