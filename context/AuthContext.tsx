@@ -15,7 +15,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { tenantAuth, db } from '@/lib/firebase';
-import { signOut as authSignOut, clearStaleSession } from '@/lib/firebase-auth';
+import { signOut as authSignOut } from '@/lib/firebase-auth';
 import { securityLog } from '@/lib/logger';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 
@@ -347,15 +347,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         let isActive = true;
 
-        // Safety release: if auth hangs, unblock after 2.5s
-        const safetyTimer = setTimeout(() => {
-            if (isActive && !hasInitialized.current) {
-                console.warn('[AuthContext] Progressive safety release.');
-                setState(prev => ({ ...prev, loading: false }));
-                hasInitialized.current = true;
-            }
-        }, 2500);
-
         // Safety release for tenantLoading - if it hangs for 5s, release it  
         const tenantSafetyTimer = setTimeout(() => {
             if (isActive) {
@@ -396,7 +387,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             error: null,
                         });
                         hasInitialized.current = true;
-                        clearTimeout(safetyTimer);
                     }
                     return;
                 }
@@ -459,7 +449,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         error: null,
                     }));
                     hasInitialized.current = true;
-                    clearTimeout(safetyTimer);
                 }
 
                 // Skip re-fetching tenant if we already have it
@@ -529,7 +518,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             isActive = false;
             unsubscribe();
-            clearTimeout(safetyTimer);
             clearTimeout(tenantSafetyTimer);
         };
     }, []);

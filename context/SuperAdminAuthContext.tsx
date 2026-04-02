@@ -130,15 +130,6 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
             });
         }
 
-        // Safety release: unblock after 3s in case auth hangs
-        const safetyTimer = setTimeout(() => {
-            if (isActive && !hasInitialized.current) {
-                console.warn('[SuperAdminAuth] Safety release triggered');
-                setState(prev => ({ ...prev, loading: false }));
-                hasInitialized.current = true;
-            }
-        }, 3000);
-
         const unsubscribe = onAuthStateChanged(adminAuth, async (user) => {
             console.log(`[SuperAdminAuth] Firebase auth state changed: ${user ? 'signed in' : 'signed out'}`);
 
@@ -151,7 +142,6 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
                         error: null, userRole: null,
                     });
                     hasInitialized.current = true;
-                    clearTimeout(safetyTimer);
                 }
                 return;
             }
@@ -189,7 +179,6 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
                     error: null,
                 }));
                 hasInitialized.current = true;
-                clearTimeout(safetyTimer);
             }
 
             // Skip re-fetching role if we already have it
@@ -258,7 +247,6 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
         return () => {
             isActive = false;
             unsubscribe();
-            clearTimeout(safetyTimer);
         };
     }, []);
 
