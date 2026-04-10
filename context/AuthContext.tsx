@@ -22,6 +22,12 @@ import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 const SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const TENANT_SESSION_EXPIRES_AT_KEY = 'nexresto-tenant-session-expires-at';
 const TENANT_SESSION_UID_KEY = 'nexresto-tenant-session-uid';
+const PASSWORD_CHANGE_BYPASS_KEY = 'nexresto-password-change-bypass';
+
+type PasswordBypassState = {
+    uid: string;
+    expiresAt: number;
+};
 
 function readStoredMs(storageKey: string): number | null {
     if (typeof window === 'undefined') return null;
@@ -59,6 +65,51 @@ function isTenantSessionExpired(userId: string): boolean {
     }
 
     return Date.now() > expiresAt;
+}
+
+function readPasswordBypassState(): PasswordBypassState | null {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem(PASSWORD_CHANGE_BYPASS_KEY);
+    if (!raw) return null;
+
+    try {
+        const parsed = JSON.parse(raw) as PasswordBypassState;
+        if (!parsed?.uid || !Number.isFinite(parsed?.expiresAt)) {
+            localStorage.removeItem(PASSWORD_CHANGE_BYPASS_KEY);
+            return null;
+        }
+        return parsed;
+    } catch {
+        localStorage.removeItem(PASSWORD_CHANGE_BYPASS_KEY);
+        return null;
+    }
+}
+
+function clearPasswordBypassState(): void {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(PASSWORD_CHANGE_BYPASS_KEY);
+}
+
+function applyPasswordChangeBypass(userId: string, mustChangePassword: boolean): boolean {
+    if (!mustChangePassword) {
+        const bypass = readPasswordBypassState();
+        if (bypass?.uid === userId) {
+            clearPasswordBypassState();
+        }
+        return false;
+    }
+
+    const bypass = readPasswordBypassState();
+    if (!bypass || bypass.uid !== userId) {
+        return true;
+    }
+
+    if (Date.now() > bypass.expiresAt) {
+        clearPasswordBypassState();
+        return true;
+    }
+
+    return false;
 }
 
 function isRecentSignIn(user: User, windowMs: number = 2 * 60 * 1000): boolean {
@@ -332,7 +383,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ? profile.subscription_days_remaining
                 : prev.subscriptionDaysRemaining,
             isImpersonating: Boolean(profile?.is_impersonating),
-            mustChangePassword: profile ? Boolean(profile.must_change_password) : prev.mustChangePassword,
+            mustChangePassword: profile
+                ? applyPasswordChangeBypass(user.uid, Boolean(profile.must_change_password))
+                : prev.mustChangePassword,
             tenantLoading: false,
         }));
     };
@@ -459,7 +512,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     setState(prev => ({
                         ...prev,
                         mustChangePassword: typeof freshMustChangePassword === 'boolean'
-                            ? freshMustChangePassword
+                            ? applyPasswordChangeBypass(user.uid, freshMustChangePassword)
                             : prev.mustChangePassword,
                         loading: false,
                         tenantLoading: false,
@@ -493,7 +546,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             ? profile.subscription_days_remaining
                             : null,
                         isImpersonating: Boolean(profile?.is_impersonating),
-                        mustChangePassword: Boolean(profile?.must_change_password),
+                        mustChangePassword: applyPasswordChangeBypass(user.uid, Boolean(profile?.must_change_password)),
                         loading: false, // Release loading now
                         tenantLoading: false,
                     }));
@@ -599,7 +652,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 userRole: profile.role || prev.userRole,
                 tenantId: profile.tenant_id || prev.tenantId,
                 tenantName: profile.tenant_name || prev.tenantName,
-                mustChangePassword: Boolean(profile.must_change_password),
+                mustChangePassword: applyPasswordChangeBypass(state.user!.uid, Boolean(profile.must_change_password)),
                 subscriptionTier: profile.subscription_tier || prev.subscriptionTier,
                 subscriptionStatus: profile.subscription_status || prev.subscriptionStatus,
                 subscriptionEndDate: profile.subscription_end_date || prev.subscriptionEndDate,

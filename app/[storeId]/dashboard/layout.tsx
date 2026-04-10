@@ -293,6 +293,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         pathname.startsWith(`${item.href}/`) ||
         (pathname === `/${urlStoreId}/dashboard` && item.href === `/${urlStoreId}/dashboard/orders`)
     );
+    const isKdsRoute = pathname === `/${urlStoreId}/dashboard/kds` || pathname.startsWith(`/${urlStoreId}/dashboard/kds/`);
+    const desktopCollapsedWidth = isKdsRoute ? 72 : 80;
+    const desktopExpandedWidth = isKdsRoute ? 200 : 240;
+    const tabletRailWidthClass = isKdsRoute ? 'w-16' : 'w-20';
+    const mobileDrawerWidthClass = isKdsRoute ? 'w-56 max-w-[78vw]' : 'w-72 max-w-[88vw]';
     const isGrandHotel = /grand/i.test(displayTenantName) || /grand/i.test(urlStoreId);
 
     useEffect(() => {
@@ -662,7 +667,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {/* Desktop Sidebar */}
                 <motion.aside
                     initial={false}
-                    animate={{ width: collapsed ? 80 : 240 }}
+                    animate={{ width: collapsed ? desktopCollapsedWidth : desktopExpandedWidth }}
                     className="hidden lg:block fixed left-0 top-0 h-full premium-sidebar border-r border-white/10 z-30"
                 >
                     <div className="flex flex-col h-full">
@@ -781,7 +786,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </motion.aside>
 
                 {/* Tablet Sidebar Rail (icon-only) */}
-                <aside className="hidden md:flex lg:hidden fixed left-0 top-0 h-full w-20 premium-sidebar border-r border-white/10 z-30">
+                <aside className={cn('hidden md:flex lg:hidden fixed left-0 top-0 h-full premium-sidebar border-r border-white/10 z-30', tabletRailWidthClass)}>
                     <div className="flex flex-col h-full w-full">
                         <div className="h-16 flex items-center justify-center border-b border-white/10">
                             <div className="w-8 h-8 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center shadow-lg shadow-amber-500/30">
@@ -872,7 +877,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 exit={{ x: '-100%' }}
                                 transition={{ type: 'spring', stiffness: 320, damping: 34, mass: 0.85 }}
                                 onClick={(e) => e.stopPropagation()}
-                                className="absolute left-0 top-0 h-full w-72 max-w-[88vw] premium-sidebar shadow-2xl will-change-transform"
+                                className={cn('absolute left-0 top-0 h-full premium-sidebar shadow-2xl will-change-transform', mobileDrawerWidthClass)}
                             >
                                 <div className="flex flex-col h-full">
                                         <div className="h-16 flex items-center justify-between px-6 border-b border-white/10 premium-sidebar">
@@ -987,15 +992,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </AnimatePresence>
 
                 {/* Main Content */}
-                <div className="md:pl-20 lg:pl-60">
-                    <motion.div initial={false} animate={{ paddingLeft: collapsed ? 80 : 240 }} className="hidden lg:block" />
+                <div className={cn('md:pl-20 lg:pl-60', isKdsRoute && 'md:pl-16 lg:pl-[12.5rem]')}>
+                    <motion.div initial={false} animate={{ paddingLeft: collapsed ? desktopCollapsedWidth : desktopExpandedWidth }} className="hidden lg:block" />
 
                     {/* Top Navbar */}
                     <header className="h-14 md:h-16 sticky top-0 z-20 bg-white/75 backdrop-blur-xl border-b border-white/40">
                         <div className="h-full px-3 md:px-4 lg:px-6 flex items-center justify-between gap-3">
                             <div className="md:hidden text-[17px] font-bold tracking-tight text-slate-800">Dashboard</div>
-                            <div className="hidden md:block flex-1 max-w-md">
-                                <GlobalSearch />
+                            <div className={cn('hidden md:block flex-1 max-w-md', isKdsRoute && 'md:hidden')}>
+                                {!isKdsRoute ? <GlobalSearch /> : null}
                             </div>
                             <div className="flex items-center gap-2 lg:gap-3">
                                 {isGrandHotel && (

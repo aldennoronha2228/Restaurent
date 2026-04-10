@@ -62,6 +62,7 @@ export default function MembersPage() {
     const [newUserCredentials, setNewUserCredentials] = useState<{ email: string; password: string } | null>(null);
     const [copiedPassword, setCopiedPassword] = useState(false);
     const [copiedRowEmail, setCopiedRowEmail] = useState<string | null>(null);
+    const [roleUpdatingEmail, setRoleUpdatingEmail] = useState<string | null>(null);
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
     const teamLimit = isPro ? TEAM_LIMITS.pro : TEAM_LIMITS.starter;
@@ -212,6 +213,23 @@ export default function MembersPage() {
         }
     };
 
+    const handleUpdateRole = async (email: string, nextRole: string, currentRole: string) => {
+        if (nextRole === currentRole) return;
+
+        setRoleUpdatingEmail(email);
+        try {
+            const roleLabel = ROLES.find((role) => role.value === nextRole)?.label || nextRole;
+            await performMemberAction(
+                { email, action: 'update_role', role: nextRole, tenantId },
+                `Role updated to ${roleLabel}`
+            );
+        } catch (err: any) {
+            toast.error(err.message);
+        } finally {
+            setRoleUpdatingEmail(null);
+        }
+    };
+
     return (
         <RoleGuard requiredPermission="can_manage_admins">
             <div className="max-w-5xl mx-auto space-y-6">
@@ -299,7 +317,7 @@ export default function MembersPage() {
                                             onChange={(e) => setNewAdminEmail(e.target.value)}
                                             placeholder="Enter new admin email (e.g., manager@hotel.com)"
                                             className={cn(
-                                                'w-full h-11 pl-10 pr-4 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/30',
+                                                'w-full h-11 pl-10 pr-4 bg-white border rounded-xl text-sm text-slate-900 placeholder:text-slate-400 caret-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/30',
                                                 isAtLimit ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-200'
                                             )}
                                             disabled={isAtLimit}
@@ -439,10 +457,33 @@ export default function MembersPage() {
                                                 <tr key={admin.email} className="hover:bg-slate-50/30 transition-colors">
                                                     <td className="px-4 py-4 font-medium text-slate-900">{admin.email}</td>
                                                     <td className="px-4 py-4">
-                                                        <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold', badgeColor)}>
-                                                            <RoleIcon className="w-3.5 h-3.5" />
-                                                            {roleInfo.label}
-                                                        </span>
+                                                        {isPro ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <select
+                                                                    value={adminRole}
+                                                                    onChange={(e) => {
+                                                                        void handleUpdateRole(admin.email, e.target.value, adminRole);
+                                                                    }}
+                                                                    disabled={roleUpdatingEmail === admin.email}
+                                                                    className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                                    title="Change role"
+                                                                >
+                                                                    {ROLES.map((role) => (
+                                                                        <option key={role.value} value={role.value}>
+                                                                            {role.label}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                {roleUpdatingEmail === admin.email ? (
+                                                                    <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin" />
+                                                                ) : null}
+                                                            </div>
+                                                        ) : (
+                                                            <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold', badgeColor)}>
+                                                                <RoleIcon className="w-3.5 h-3.5" />
+                                                                {roleInfo.label}
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td className="px-4 py-4">
                                                         {admin.temp_password ? (

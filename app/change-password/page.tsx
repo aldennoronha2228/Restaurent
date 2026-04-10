@@ -10,6 +10,9 @@ import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import NexRestoLogo from '@/components/ui/NexRestoLogo';
 
+const PASSWORD_CHANGE_BYPASS_KEY = 'nexresto-password-change-bypass';
+const PASSWORD_CHANGE_BYPASS_MS = 10 * 60 * 1000;
+
 function getDashboardPathForRole(role?: string | null): string {
     return role === 'kitchen' ? '/dashboard/kds' : '/dashboard/orders';
 }
@@ -143,6 +146,13 @@ export default function ChangePasswordPage() {
             }
 
             await user.getIdToken(true).catch(() => { });
+
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(
+                    PASSWORD_CHANGE_BYPASS_KEY,
+                    JSON.stringify({ uid: user.uid, expiresAt: Date.now() + PASSWORD_CHANGE_BYPASS_MS })
+                );
+            }
 
             const profileRes = await fetch('/api/auth/profile', {
                 headers: { Authorization: `Bearer ${await user.getIdToken()}` },

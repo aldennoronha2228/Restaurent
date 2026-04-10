@@ -170,6 +170,7 @@ function createDingUrl(): string {
 }
 
 function StatusColumn({
+    lane,
     title,
     subtitle,
     orders,
@@ -177,6 +178,7 @@ function StatusColumn({
     actionLoadingId,
     onAdvance,
 }: {
+    lane: 'pending' | 'preparing' | 'ready';
     title: string;
     subtitle: string;
     orders: KdsOrder[];
@@ -184,14 +186,41 @@ function StatusColumn({
     actionLoadingId: string | null;
     onAdvance: (order: KdsOrder) => Promise<void>;
 }) {
+    const laneTheme = {
+        pending: {
+            column: 'border-amber-200 bg-amber-50/65',
+            header: 'border-amber-200/80 bg-amber-100/70',
+            title: 'text-amber-900',
+            badge: 'border-amber-300 bg-amber-200/80 text-amber-900',
+            subtitle: 'text-amber-800/80',
+            empty: 'border-amber-300/70 bg-amber-50 text-amber-800/80',
+        },
+        preparing: {
+            column: 'border-sky-200 bg-sky-50/65',
+            header: 'border-sky-200/80 bg-sky-100/70',
+            title: 'text-sky-900',
+            badge: 'border-sky-300 bg-sky-200/80 text-sky-900',
+            subtitle: 'text-sky-800/80',
+            empty: 'border-sky-300/70 bg-sky-50 text-sky-800/80',
+        },
+        ready: {
+            column: 'border-emerald-200 bg-emerald-50/65',
+            header: 'border-emerald-200/80 bg-emerald-100/70',
+            title: 'text-emerald-900',
+            badge: 'border-emerald-300 bg-emerald-200/80 text-emerald-900',
+            subtitle: 'text-emerald-800/80',
+            empty: 'border-emerald-300/70 bg-emerald-50 text-emerald-800/80',
+        },
+    }[lane];
+
     return (
-        <section className="min-h-[72vh] rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-900/95 px-4 py-3 backdrop-blur">
+        <section className={`min-h-[72vh] rounded-3xl border shadow-sm ${laneTheme.column}`}>
+            <header className={`sticky top-0 z-10 border-b px-4 py-3 backdrop-blur ${laneTheme.header}`}>
                 <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold tracking-wide text-zinc-100">{title}</h2>
-                    <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">{orders.length}</span>
+                    <h2 className={`text-base font-semibold tracking-wide ${laneTheme.title}`}>{title}</h2>
+                    <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${laneTheme.badge}`}>{orders.length}</span>
                 </div>
-                <p className="mt-1 text-xs text-zinc-400">{subtitle}</p>
+                <p className={`mt-1 text-xs ${laneTheme.subtitle}`}>{subtitle}</p>
             </header>
 
             <motion.div layout className="space-y-3 p-3">
@@ -210,19 +239,19 @@ function StatusColumn({
                                 exit={{ opacity: 0, y: -10, scale: 0.96 }}
                                 transition={{ duration: 0.2 }}
                                 className={[
-                                    'rounded-xl border bg-zinc-950/90 p-3 shadow-lg',
+                                    'rounded-2xl border bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]',
                                     isUrgent
-                                        ? 'border-red-500/80 ring-2 ring-red-500/25 animate-pulse'
-                                        : 'border-zinc-800',
+                                        ? 'border-red-300 ring-2 ring-red-200/70 animate-pulse'
+                                        : 'border-slate-200',
                                 ].join(' ')}
                             >
-                                <div className="mb-3 flex items-start justify-between gap-2 border-b border-zinc-800 pb-2">
+                                <div className="mb-3 flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
                                     <div>
-                                        <p className="text-lg font-bold leading-none text-zinc-100">Table {order.tableNumber}</p>
-                                        <p className="mt-1 text-xs tracking-[0.18em] text-zinc-400">ORDER #{order.orderNumber}</p>
+                                        <p className="text-lg font-bold leading-none text-slate-900">Table {order.tableNumber}</p>
+                                        <p className="mt-1 text-xs tracking-[0.18em] text-slate-500">ORDER #{order.orderNumber}</p>
                                     </div>
                                     {isUrgent ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-200">
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700">
                                             <Flame className="h-3 w-3" /> Urgent
                                         </span>
                                     ) : null}
@@ -230,33 +259,33 @@ function StatusColumn({
 
                                 <div className="space-y-2">
                                     {order.items.length === 0 ? (
-                                        <p className="text-sm text-zinc-500">No items found.</p>
+                                        <p className="text-sm text-slate-500">No items found.</p>
                                     ) : (
                                         order.items.map((item, idx) => (
-                                            <div key={`${order.id}-item-${idx}`} className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-2 py-1.5">
-                                                <p className="text-sm font-medium text-zinc-100">
-                                                    <span className="mr-2 text-zinc-300">{item.quantity}x</span>
+                                            <div key={`${order.id}-item-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+                                                <p className="text-sm font-semibold text-slate-900">
+                                                    <span className="mr-2 text-slate-600">{item.quantity}x</span>
                                                     {item.name}
                                                 </p>
                                                 {item.addOns.length > 0 ? (
-                                                    <p className="mt-1 text-xs text-amber-300">Add-ons: {item.addOns.join(', ')}</p>
+                                                    <p className="mt-1 text-xs text-amber-700">Add-ons: {item.addOns.join(', ')}</p>
                                                 ) : null}
-                                                {item.note ? <p className="mt-1 text-xs text-amber-300">Note: {item.note}</p> : null}
+                                                {item.note ? <p className="mt-1 text-xs text-amber-700">Note: {item.note}</p> : null}
                                             </div>
                                         ))
                                     )}
 
                                     {order.note ? (
-                                        <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">
+                                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
                                             Kitchen Note: {order.note}
                                         </p>
                                     ) : null}
                                 </div>
 
-                                <div className="mt-3 flex items-center justify-between border-t border-zinc-800 pt-2">
+                                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2">
                                     <span className={[
                                         'inline-flex items-center gap-1 text-xs font-medium',
-                                        isUrgent ? 'text-red-300' : 'text-zinc-300',
+                                        isUrgent ? 'text-red-700' : 'text-slate-600',
                                     ].join(' ')}>
                                         <Clock3 className="h-3.5 w-3.5" /> {formatElapsed(elapsedMs)}
                                     </span>
@@ -269,12 +298,12 @@ function StatusColumn({
                                                 void onAdvance(order);
                                             }}
                                             className={[
-                                                'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                                                'rounded-xl px-3 py-1.5 text-xs font-semibold transition',
                                                 actionLoadingId === order.id
-                                                    ? 'cursor-not-allowed bg-zinc-700 text-zinc-300'
+                                                    ? 'cursor-not-allowed bg-slate-200 text-slate-500'
                                                     : order.status === 'new'
-                                                        ? 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400'
-                                                        : 'bg-sky-500 text-zinc-950 hover:bg-sky-400',
+                                                        ? 'bg-amber-500 text-white hover:bg-amber-600'
+                                                        : 'bg-emerald-600 text-white hover:bg-emerald-700',
                                             ].join(' ')}
                                         >
                                             {actionLoadingId === order.id
@@ -291,7 +320,7 @@ function StatusColumn({
                 </AnimatePresence>
 
                 {orders.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-zinc-700 bg-zinc-900/40 p-6 text-center text-sm text-zinc-500">
+                    <div className={`rounded-2xl border border-dashed p-6 text-center text-sm ${laneTheme.empty}`}>
                         No orders in this lane.
                     </div>
                 ) : null}
@@ -451,28 +480,29 @@ export default function KdsPage() {
 
     return (
         <RoleGuard requiredPermission="can_view_kds">
-            <div className="min-h-screen bg-zinc-950 px-4 py-4 text-zinc-100 lg:px-6">
-                <header className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3">
+            <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-100 to-slate-200 px-4 py-4 text-slate-900 lg:px-6">
+                <header className="mb-4 rounded-3xl border border-slate-200 bg-white/95 px-4 py-4 shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-zinc-100">
-                                <ChefHat className="h-6 w-6 text-emerald-400" /> Kitchen Display System
+                            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
+                                <ChefHat className="h-6 w-6 text-emerald-600" /> Kitchen Display System
                             </h1>
-                            <p className="mt-1 text-sm text-zinc-400">Live Kanban board for active kitchen orders.</p>
+                            <p className="mt-1 text-sm text-slate-600">Live Kanban board for active kitchen orders.</p>
                         </div>
-                        <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300">
-                            <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+                        <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
+                            <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
                             Optimized for landscape tablet and TV view
                         </div>
                     </div>
                     {listenerError ? (
-                        <p className="mt-2 text-xs text-amber-300">{listenerError}</p>
+                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">{listenerError}</p>
                     ) : null}
                 </header>
 
                 <div className="overflow-x-auto pb-2">
                     <div className="grid min-w-[1080px] grid-cols-3 gap-4">
                         <StatusColumn
+                            lane="pending"
                             title="Pending"
                             subtitle="New tickets waiting to start"
                             orders={pendingOrders}
@@ -481,6 +511,7 @@ export default function KdsPage() {
                             onAdvance={updateStatus}
                         />
                         <StatusColumn
+                            lane="preparing"
                             title="Preparing"
                             subtitle="Orders currently being cooked"
                             orders={preparingOrders}
@@ -489,6 +520,7 @@ export default function KdsPage() {
                             onAdvance={updateStatus}
                         />
                         <StatusColumn
+                            lane="ready"
                             title="Ready"
                             subtitle="Ready for pickup/serve"
                             orders={readyOrders}

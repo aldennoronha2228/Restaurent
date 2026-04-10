@@ -287,6 +287,37 @@ export async function POST(req: NextRequest) {
                 message: 'Temporary password issued successfully.',
                 tempPassword,
             });
+        } else if (action === 'update_role') {
+            const requestedRole = String(role || '').toLowerCase();
+            const allowedRoles = new Set(['owner', 'manager', 'staff', 'kitchen']);
+            if (!allowedRoles.has(requestedRole)) {
+                return NextResponse.json({ error: 'Invalid role. Allowed: owner, manager, staff, kitchen.' }, { status: 400 });
+            }
+
+            const normalizedEmail = String(email || '').toLowerCase().trim();
+            if (!normalizedEmail) {
+                return NextResponse.json({ error: 'Missing email' }, { status: 400 });
+            }
+
+            const user = await adminAuth.getUserByEmail(normalizedEmail);
+            const staffRef = adminFirestore.doc(`restaurants/${tenantId}/staff/${user.uid}`);
+            const staffSnap = await staffRef.get();
+
+            if (!staffSnap.exists) {
+                return NextResponse.json({ error: 'User is not a staff member of this restaurant.' }, { status: 404 });
+            }
+
+            await staffRef.update({ role: requestedRole });
+
+            const existingClaims = user.customClaims || {};
+            await adminAuth.setCustomUserClaims(user.uid, {
+                ...existingClaims,
+                role: requestedRole,
+                restaurant_id: tenantId,
+                tenant_id: tenantId,
+            });
+
+            return NextResponse.json({ message: 'Member role updated successfully.' });
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
