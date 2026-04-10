@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { motion } from 'motion/react';
+import { motion, type Variants } from 'motion/react';
 import { Playfair_Display } from 'next/font/google';
 import { BookOpen, ClipboardList, ShoppingBag } from 'lucide-react';
 import type { MenuItem as CartMenuItem } from '@/context/CartContext';
@@ -90,7 +90,7 @@ export function GourmetCatalogLayout({
         },
     };
 
-    const cardVariants = {
+    const cardVariants: Variants = {
         hidden: { opacity: 0, y: 14 },
         show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
     };
