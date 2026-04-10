@@ -12,6 +12,7 @@ import { getTenantCustomerStorageKey, getTenantTableStorageKey } from '@/lib/cli
 import { isValidPhone, normalizePhone } from '@/lib/customer-tracking';
 import MenuCatalogLayout from './MenuCatalogLayout';
 import { CartDrawer } from './CartDrawer';
+import { MenuConcierge } from './MenuConcierge';
 
 type FirestoreItem = {
     id: string;
@@ -311,7 +312,7 @@ export function CustomerMenuShell({ restaurantIdOverride, tenantHomePath, restau
                         return {
                             id: row.id,
                             name: String(row.name || 'Unnamed Item'),
-                            description: '',
+                            description: String((row as Record<string, unknown>).description || ''),
                             price: Number(row.price || 0),
                             image: getOptimizedMenuItemImageSrc(row.image_url),
                             category: resolvedCategory,
@@ -483,6 +484,22 @@ export function CustomerMenuShell({ restaurantIdOverride, tenantHomePath, restau
                 }}
                 onOpenOrders={() => router.push(buildCustomerUrl('/customer/order-history'))}
             />
+            {restaurantId ? (
+                <MenuConcierge
+                    restaurantId={restaurantId}
+                    menuItems={menuItems}
+                    onAddToCart={(item) => {
+                        if (!requireCapture()) return;
+                        if (item.available) {
+                            addToCart({
+                                ...item,
+                                image: item.image || '',
+                                description: item.description || '',
+                            });
+                        }
+                    }}
+                />
+            ) : null}
             <CartDrawer tableId={resolvedTableId} restaurantId={restaurantId || undefined} />
 
             <AnimatePresence>
