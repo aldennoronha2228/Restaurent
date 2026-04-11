@@ -1,32 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" role="img" aria-label="NexResto logo">
-  <defs>
-    <filter id="nrOrangeGlow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="8" result="blur" />
-      <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
-  </defs>
-
-  <g transform="translate(120 56)" fill="none" stroke="#ff5a00" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" filter="url(#nrOrangeGlow)">
-    <path d="M120 24L40 70L120 116L200 70L120 24" />
-    <path d="M120 116V208" />
-    <path d="M40 70V162" />
-    <path d="M200 70V162" />
-    <path d="M120 208L48 166" />
-    <path d="M120 208L192 166" />
-  </g>
-
-  <text
-    x="120"
-    y="340"
-    font-family="'Plus Jakarta Sans', 'Inter', 'Segoe UI', Arial, sans-serif"
-    font-size="108"
-    font-weight="500"
-    letter-spacing="20"
-    fill="#f8fafc"
-  >
-    NEXRESTO
-  </text>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M256 74L410 163V349L256 438L102 349V163L256 74Z" stroke="#FF6A00" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M102 163L256 252L410 163" stroke="#FF6A00" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M256 252V438" stroke="#FF6A00" stroke-width="28" stroke-linecap="round"/>
 </svg>

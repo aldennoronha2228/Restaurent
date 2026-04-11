@@ -1,165 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminFirestore } from '@/lib/firebase-admin';
-import { checkRateLimit } from '@/lib/rateLimit';
-import { sendDemoRequestNotificationEmail } from '@/lib/email';
 
-type DemoRequestPayload = {
-    contactName?: unknown;
-    businessEmail?: unknown;
-    phone?: unknown;
-    restaurantName?: unknown;
-    outletCount?: unknown;
-    qrRequirements?: unknown;
+type DemoPayload = {
+  name?: string;
+  phone?: string;
 };
 
-const VALID_OUTLET_COUNTS = new Set([
-    '1 Outlet',
-    '2-5 Outlets',
-    '6-20 Outlets',
-    '20+ Outlets',
-]);
+type DemoSubmission = {
+  id: string;
+  name: string;
+  phone: string;
+  createdAt: string;
+};
 
-function cleanString(value: unknown, maxLength: number): string {
-    return String(value ?? '')
-        .trim()
-        .replace(/\s+/g, ' ')
-        .slice(0, maxLength);
-}
+const demoSubmissions: DemoSubmission[] = [];
 
-function isValidEmail(value: string): boolean {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function getClientIp(request: NextRequest): string {
-    const forwarded = request.headers.get('x-forwarded-for');
-    if (forwarded) {
-        const first = forwarded.split(',')[0]?.trim();
-        if (first) return first;
-    }
-
-    const realIp = request.headers.get('x-real-ip')?.trim();
-    if (realIp) return realIp;
-
-    return 'unknown';
+export async function GET() {
+  const items = [...demoSubmissions].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return NextResponse.json({ submissions: items });
 }
 
 export async function POST(request: NextRequest) {
-    try {
-        const raw = (await request.json()) as DemoRequestPayload;
+  try {
+    const body = (await request.json()) as DemoPayload;
+    const name = String(body?.name || '').trim();
+    const phone = String(body?.phone || '').trim();
 
-        const contactName = cleanString(raw.contactName, 80);
-        const businessEmail = cleanString(raw.businessEmail, 120).toLowerCase();
-        const phone = cleanString(raw.phone, 32);
-        const restaurantName = cleanString(raw.restaurantName, 120);
-        const outletCount = cleanString(raw.outletCount, 40);
-        const qrRequirements = cleanString(raw.qrRequirements, 1200);
-
-        if (!contactName || contactName.length < 2) {
-            return NextResponse.json({ error: 'Contact name is required' }, { status: 400 });
-        }
-        if (!businessEmail || !isValidEmail(businessEmail)) {
-            return NextResponse.json({ error: 'Valid business email is required' }, { status: 400 });
-        }
-        if (!phone || phone.length < 7) {
-            return NextResponse.json({ error: 'Valid phone number is required' }, { status: 400 });
-        }
-        if (!restaurantName || restaurantName.length < 2) {
-            return NextResponse.json({ error: 'Restaurant name is required' }, { status: 400 });
-        }
-        if (!VALID_OUTLET_COUNTS.has(outletCount)) {
-            return NextResponse.json({ error: 'Please select a valid outlet count' }, { status: 400 });
-        }
-
-        const clientIp = getClientIp(request);
-        const ipLimit = checkRateLimit(clientIp, 'demo_request_ip', 8, 600);
-        if (!ipLimit.allowed) {
-            return NextResponse.json(
-                { error: `Too many requests. Retry in ${ipLimit.retryAfterSecs}s` },
-                { status: 429 }
-            );
-        }
-
-        const emailLimit = checkRateLimit(businessEmail, 'demo_request_email', 3, 1800);
-        if (!emailLimit.allowed) {
-            return NextResponse.json(
-                { error: `Too many requests for this email. Retry in ${emailLimit.retryAfterSecs}s` },
-                { status: 429 }
-            );
-        }
-
-        const ref = await adminFirestore.collection('demo_requests').add({
-            contact_name: contactName,
-            business_email: businessEmail,
-            phone,
-            restaurant_name: restaurantName,
-            outlet_count: outletCount,
-            qr_requirements: qrRequirements,
-            source: 'website-homepage',
-            status: 'new',
-            created_at: FieldValue.serverTimestamp(),
-            updated_at: FieldValue.serverTimestamp(),
-        });
-
-        await adminFirestore.collection('global_logs').add({
-            event_type: 'DEMO_REQUEST_CREATED',
-            message: `New demo request from ${restaurantName}`,
-            severity: 'info',
-            metadata: {
-                request_id: ref.id,
-                contact_name: contactName,
-                business_email: businessEmail,
-                outlet_count: outletCount,
-            },
-            tenant_id: null,
-            user_id: null,
-            restaurant_name: restaurantName,
-            created_at: FieldValue.serverTimestamp(),
-        });
-
-        const superAdminEmail = cleanString(process.env.SUPER_ADMIN_EMAIL, 160).toLowerCase();
-        if (superAdminEmail && isValidEmail(superAdminEmail)) {
-            const notificationResult = await sendDemoRequestNotificationEmail({
-                to: superAdminEmail,
-                requestId: ref.id,
-                contactName,
-                businessEmail,
-                phone,
-                restaurantName,
-                outletCount,
-                qrRequirements,
-            });
-
-            if (notificationResult.success) {
-                await adminFirestore.doc(`demo_requests/${ref.id}`).set({
-                    notification_email_sent_at: FieldValue.serverTimestamp(),
-                    notification_email_to: superAdminEmail,
-                    notification_email_provider_id: notificationResult.providerMessageId || null,
-                }, { merge: true });
-            } else {
-                console.error('[demo-requests] Notification email failed:', notificationResult.error);
-                await adminFirestore.collection('global_logs').add({
-                    event_type: 'DEMO_REQUEST_NOTIFICATION_EMAIL_FAILED',
-                    message: `Failed to send demo request notification for ${restaurantName}`,
-                    severity: 'warning',
-                    metadata: {
-                        request_id: ref.id,
-                        to: superAdminEmail,
-                        error: notificationResult.error || 'Unknown email error',
-                    },
-                    tenant_id: null,
-                    user_id: null,
-                    restaurant_name: restaurantName,
-                    created_at: FieldValue.serverTimestamp(),
-                });
-            }
-        } else {
-            console.warn('[demo-requests] SUPER_ADMIN_EMAIL is missing or invalid, skipping notification email');
-        }
-
-        return NextResponse.json({ ok: true, requestId: ref.id }, { status: 201 });
-    } catch (error) {
-        console.error('[demo-requests] Failed to create request:', error);
-        return NextResponse.json({ error: 'Failed to submit request' }, { status: 500 });
+    if (!name || !phone) {
+      return NextResponse.json({ error: 'Name and phone are required' }, { status: 400 });
     }
+
+    if (name.length < 2) {
+      return NextResponse.json({ error: 'Name must be at least 2 characters' }, { status: 400 });
+    }
+
+    if (!/^[+()\-\d\s]{7,20}$/.test(phone)) {
+      return NextResponse.json({ error: 'Enter a valid phone number' }, { status: 400 });
+    }
+
+    demoSubmissions.unshift({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      phone,
+      createdAt: new Date().toISOString(),
+    });
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
+  }
 }
