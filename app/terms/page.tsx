@@ -10,20 +10,54 @@ const lastUpdated = "April 1, 2026";
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-4xl rounded-2xl border border-white/10 bg-slate-900/70 p-6 sm:p-8">
+    <div className="min-h-screen bg-[#131313] text-[#e5e2e1]">
+      <header className="fixed top-0 z-50 w-full border-b border-white/5 bg-black/60 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
+          <div className="flex items-center gap-3">
+            <img
+              alt="NexResto logo mark"
+              className="h-9 w-9 rounded-xl border border-white/15 bg-black/30 p-1"
+              src="/nexresto-mark.svg?v=20260412d"
+            />
+            <span className="text-xl font-bold tracking-tight text-white">NexResto</span>
+          </div>
+
+          <nav className="hidden items-center gap-6 text-sm text-stone-300 md:flex">
+            <Link className="transition-colors hover:text-white" href="/">Home</Link>
+            <Link className="transition-colors hover:text-white" href="/pricing">Pricing</Link>
+            <Link className="transition-colors hover:text-white" href="/roi">ROI</Link>
+            <Link className="transition-colors hover:text-white" href="/privacy">Privacy</Link>
+          </nav>
+
+          <Link
+            className="rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10 sm:px-4 sm:py-2 sm:text-sm"
+            href="/login"
+          >
+            Login
+          </Link>
+        </div>
+      </header>
+
+      <main
+        className="px-4 pb-16 pt-28 text-[#e5e2e1] sm:px-6 lg:px-8"
+        style={{
+          background:
+            "radial-gradient(60rem 32rem at 8% 6%, rgba(62, 84, 211, 0.2), transparent 60%), radial-gradient(44rem 28rem at 92% 10%, rgba(16, 185, 129, 0.12), transparent 60%), #131313",
+        }}
+      >
+      <div className="mx-auto max-w-4xl rounded-2xl border border-white/10 bg-[#171717] p-6 sm:p-8">
         <div className="mb-8 border-b border-white/10 pb-6">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Legal</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#8f8fa0]">Legal</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">Terms of Service</h1>
-          <p className="mt-3 text-sm text-slate-300">
+          <p className="mt-3 text-sm text-[#c5c5d6]">
             Last updated: {lastUpdated}
           </p>
-          <p className="mt-4 text-sm leading-relaxed text-slate-300">
+          <p className="mt-4 text-sm leading-relaxed text-[#c5c5d6]">
             These terms govern access to and use of the NexResto platform by restaurants, staff users, and authorized operators.
           </p>
         </div>
 
-        <div className="space-y-8 text-sm leading-relaxed text-slate-300">
+        <div className="space-y-8 text-sm leading-relaxed text-[#c5c5d6]">
           <section>
             <h2 className="text-lg font-semibold text-white">1. Acceptance and Scope</h2>
             <ol className="mt-3 list-decimal space-y-2 pl-5">
@@ -140,6 +174,12 @@ export default function TermsPage() {
           </Link>
         </div>
       </div>
-    </main>
+      </main>
+
+      <footer className="border-t border-white/5 bg-black/60">
+        <div className="mx-auto max-w-7xl px-6 py-8 text-sm text-stone-500 lg:px-8">(c) 2026 NexResto. Premium Dining Experience.</div>
+      </footer>
+
+    </div>
   );
 }

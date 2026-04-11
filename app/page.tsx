@@ -44,6 +44,19 @@ const FEATURE_COMPARISON_ROWS: ComparisonRow[] = [
   { feature: "Monthly Cost", petpooja: "Starts around Rs 1,500/mo", nexresto: "Rs 999 flat/mo" },
 ];
 
+type HomePricingPlan = {
+  name: string;
+  price: string;
+  cadence: string;
+  highlighted?: boolean;
+};
+
+const HOME_PRICING_PLANS: HomePricingPlan[] = [
+  { name: "Starter", price: "Rs 999", cadence: "/month" },
+  { name: "Growth", price: "Rs 2,499", cadence: "/month", highlighted: true },
+  { name: "Pro", price: "Rs 4,999", cadence: "/month" },
+];
+
 export default function RootPage() {
   const router = useRouter();
   const { session, loading, tenantLoading, userRole, tenantId, mustChangePassword } = useAuth();
@@ -236,6 +249,7 @@ export default function RootPage() {
 
           <nav className="hidden items-center gap-6 text-sm text-stone-300 md:flex">
             <a className="transition-colors hover:text-white" href="#features">Features</a>
+            <Link className="transition-colors hover:text-white" href="/pricing">Pricing</Link>
             <Link className="transition-colors hover:text-white" href="/roi">ROI</Link>
             <a className="transition-colors hover:text-white" href="#platform">Platform</a>
             <a className="transition-colors hover:text-white" href="#demo-request">Demo</a>
@@ -370,39 +384,6 @@ export default function RootPage() {
           </div>
         </section>
 
-        <section className="px-6 pb-20 lg:px-8" id="comparison">
-          <div className="mx-auto max-w-7xl rounded-2xl border border-white/10 bg-[#171717] p-6 md:p-8 lg:p-10">
-            <div className="reveal reveal-left mb-7" data-reveal>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-[#8f8fa0]">Head-to-Head</p>
-              <h2 className="mt-3 text-3xl font-bold text-white sm:text-4xl">Petpooja vs NexResto</h2>
-              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[#c5c5d6] sm:text-base">
-                A practical comparison of common operational gaps in basic POS workflows versus the all-in-one NexResto platform.
-              </p>
-            </div>
-
-            <div className="reveal reveal-right overflow-x-auto rounded-xl border border-white/10" data-reveal>
-              <table className="w-full min-w-[760px] border-collapse text-left">
-                <thead className="bg-[#20201f]">
-                  <tr>
-                    <th className="px-4 py-4 text-xs uppercase tracking-[0.12em] text-[#8f8fa0] sm:px-5">Feature</th>
-                    <th className="px-4 py-4 text-xs uppercase tracking-[0.12em] text-[#8f8fa0] sm:px-5">Petpooja / Basic POS</th>
-                    <th className="px-4 py-4 text-xs uppercase tracking-[0.12em] text-[#8f8fa0] sm:px-5">NexResto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {FEATURE_COMPARISON_ROWS.map((row, index) => (
-                    <tr className={index % 2 === 0 ? "bg-[#1b1b1b]" : "bg-[#1f1f1f]"} key={row.feature}>
-                      <td className="border-t border-white/10 px-4 py-4 text-sm font-semibold text-white sm:px-5">{row.feature}</td>
-                      <td className="border-t border-white/10 px-4 py-4 text-sm text-rose-300 sm:px-5">{row.petpooja}</td>
-                      <td className="border-t border-white/10 px-4 py-4 text-sm text-emerald-300 sm:px-5">{row.nexresto}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
         <section className="px-6 pb-20 lg:px-8">
           <div className="mx-auto grid max-w-7xl gap-8 rounded-2xl border border-white/10 bg-[#171717] p-8 lg:grid-cols-12 lg:gap-10 lg:p-10">
             <div className="reveal reveal-left lg:col-span-5" data-reveal>
@@ -468,6 +449,76 @@ export default function RootPage() {
                   <li>Transparent daily margin and performance visibility.</li>
                 </ul>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-[#ececef] px-6 py-20 text-[#101828] lg:px-8" id="pricing-preview">
+          <div className="mx-auto max-w-7xl">
+            <div className="reveal reveal-zoom mx-auto max-w-3xl text-center" data-reveal>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f25f1f]">Pricing</p>
+              <h2 className="mt-5 text-4xl font-black tracking-tight text-[#0d1325] sm:text-5xl lg:text-6xl">
+                Transparent Pricing. No Surprises.
+              </h2>
+              <p className="mx-auto mt-5 max-w-2xl text-lg text-[#5f6f86]">
+                Monthly. Cancel anytime. No annual lock-in. No per-order commission.
+              </p>
+            </div>
+
+            <div className="reveal reveal-up mt-12 overflow-hidden rounded-2xl border border-[#d4d8e1] bg-[#f5f6f8]" data-reveal>
+              <div className="grid md:grid-cols-3">
+                {HOME_PRICING_PLANS.map((plan) => (
+                  <article
+                    className={`flex min-h-[250px] flex-col items-center justify-center border-[#d4d8e1] px-6 py-10 text-center md:border-r last:md:border-r-0 ${
+                      plan.highlighted ? "bg-[#090a0f] text-white" : "bg-[#f5f6f8] text-[#0d1325]"
+                    }`}
+                    key={plan.name}
+                  >
+                    <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${plan.highlighted ? "text-[#f25f1f]" : "text-[#8793a5]"}`}>
+                      {plan.name}
+                    </p>
+                    <p className="mt-6 text-5xl font-black tracking-tight">{plan.price}</p>
+                    <p className={`mt-4 text-3xl ${plan.highlighted ? "text-[#8d97aa]" : "text-[#67758d]"}`}>{plan.cadence}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <p className="mt-8 text-center text-xl text-[#63728a]">
+              Full feature comparison on <Link className="font-semibold text-[#f25f1f] transition hover:opacity-80" href="/pricing">pricing page</Link>
+            </p>
+          </div>
+        </section>
+
+        <section className="px-6 pb-20 pt-20 lg:px-8" id="comparison">
+          <div className="mx-auto max-w-7xl rounded-2xl border border-white/10 bg-[#171717] p-6 md:p-8 lg:p-10">
+            <div className="reveal reveal-left mb-7" data-reveal>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-[#8f8fa0]">Head-to-Head</p>
+              <h2 className="mt-3 text-3xl font-bold text-white sm:text-4xl">Petpooja vs NexResto</h2>
+              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[#c5c5d6] sm:text-base">
+                A practical comparison of common operational gaps in basic POS workflows versus the all-in-one NexResto platform.
+              </p>
+            </div>
+
+            <div className="reveal reveal-right overflow-x-auto rounded-xl border border-white/10" data-reveal>
+              <table className="w-full min-w-[760px] border-collapse text-left">
+                <thead className="bg-[#20201f]">
+                  <tr>
+                    <th className="px-4 py-4 text-xs uppercase tracking-[0.12em] text-[#8f8fa0] sm:px-5">Feature</th>
+                    <th className="px-4 py-4 text-xs uppercase tracking-[0.12em] text-[#8f8fa0] sm:px-5">Petpooja / Basic POS</th>
+                    <th className="px-4 py-4 text-xs uppercase tracking-[0.12em] text-[#8f8fa0] sm:px-5">NexResto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {FEATURE_COMPARISON_ROWS.map((row, index) => (
+                    <tr className={index % 2 === 0 ? "bg-[#1b1b1b]" : "bg-[#1f1f1f]"} key={row.feature}>
+                      <td className="border-t border-white/10 px-4 py-4 text-sm font-semibold text-white sm:px-5">{row.feature}</td>
+                      <td className="border-t border-white/10 px-4 py-4 text-sm text-rose-300 sm:px-5">{row.petpooja}</td>
+                      <td className="border-t border-white/10 px-4 py-4 text-sm text-emerald-300 sm:px-5">{row.nexresto}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -626,6 +677,7 @@ export default function RootPage() {
             <div className="space-y-2 text-sm text-stone-400">
               <a className="block hover:text-emerald-400" href="#platform">Platform</a>
               <a className="block hover:text-emerald-400" href="#features">Features</a>
+              <Link className="block hover:text-emerald-400" href="/pricing">Pricing</Link>
               <Link className="block hover:text-emerald-400" href="/roi">ROI</Link>
               <a className="block hover:text-emerald-400" href="#demo-request">Demo</a>
             </div>
@@ -673,6 +725,10 @@ export default function RootPage() {
 
         .reveal-right {
           transform: translate3d(36px, 18px, 0);
+        }
+
+        .reveal-up {
+          transform: translate3d(0, 28px, 0);
         }
 
         .reveal-zoom {
