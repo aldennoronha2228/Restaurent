@@ -160,11 +160,11 @@ export default function PricingPage() {
       >
         <section className="px-6 pb-16 pt-10 lg:px-8 lg:pb-20">
           <div className="mx-auto max-w-4xl text-center">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#bbc3ff]">Pricing</p>
-            <h1 className="mt-4 text-5xl font-black tracking-tight text-white sm:text-6xl">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#bbc3ff]">Pricing</p>
+            <h1 className="mt-4 text-5xl font-black leading-[0.92] tracking-[-0.03em] text-white sm:text-6xl lg:text-7xl">
               Transparent Pricing. No Surprises.
             </h1>
-            <p className="mx-auto mt-6 max-w-3xl text-xl text-[#c5c5d6]">
+            <p className="mx-auto mt-6 max-w-3xl text-lg font-medium text-[#c5c5d6] sm:text-2xl">
               Monthly. Cancel anytime. No annual lock-in. No per-order commission.
             </p>
           </div>
@@ -180,29 +180,31 @@ export default function PricingPage() {
                 key={plan.name}
               >
                 {plan.featured && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-[#3e54d3] px-5 py-1.5 text-sm font-semibold text-[#d8dbff]">
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-[#3e54d3] px-5 py-1.5 text-sm font-bold tracking-wide text-[#d8dbff]">
                     Most Popular
                   </div>
                 )}
 
-                <h2 className="text-4xl font-black tracking-tight text-white">{plan.name}</h2>
-                <p className="mt-2 text-lg text-[#9ca7ba]">{plan.subtitle}</p>
+                <h2 className="text-4xl font-black leading-[0.98] tracking-[-0.02em] text-white">{plan.name}</h2>
+                <p className="mt-2 text-base font-medium text-[#9ca7ba]">{plan.subtitle}</p>
 
-                <p className="mt-7 text-5xl font-black tracking-tight text-white">{plan.priceInr}</p>
-                {plan.priceUsd && <p className="mt-2 text-xl text-[#9ca7ba]">{plan.priceUsd}</p>}
+                <p className="tabular-nums mt-7 text-[clamp(2.2rem,5vw,3.7rem)] font-black leading-none tracking-[-0.03em] text-white">
+                  {plan.priceInr}
+                </p>
+                {plan.priceUsd && <p className="mt-2 text-lg font-medium text-[#9ca7ba]">{plan.priceUsd}</p>}
 
-                <p className="mt-8 text-lg font-semibold text-emerald-300">{plan.detailTitle}</p>
-                <ul className="mt-4 space-y-3 text-lg text-[#c5c5d6]">
+                <p className="mt-8 text-base font-bold uppercase tracking-[0.06em] text-emerald-300">{plan.detailTitle}</p>
+                <ul className="mt-4 space-y-3 text-[1.05rem] leading-snug text-[#c5c5d6]">
                   {plan.details.map((detail) => (
                     <li className="flex items-start gap-3" key={detail}>
-                      <span className="mt-0.5 font-bold text-emerald-300">✓</span>
+                      <span className="mt-0.5 text-lg font-bold text-emerald-300">✓</span>
                       <span>{detail}</span>
                     </li>
                   ))}
                 </ul>
 
                 <button
-                  className={`mt-9 w-full rounded-full border px-5 py-3 text-lg font-semibold transition ${
+                  className={`mt-9 w-full rounded-full border px-5 py-3 text-lg font-bold tracking-wide transition ${
                     plan.featured
                       ? "border-[#3e54d3] bg-[#3e54d3] text-[#d8dbff] hover:opacity-90"
                       : "border-white/20 bg-transparent text-white hover:bg-white/10"
@@ -218,29 +220,29 @@ export default function PricingPage() {
 
         <section className="px-6 pb-24 lg:px-8">
           <div className="mx-auto max-w-7xl text-center">
-            <h2 className="text-5xl font-black tracking-tight text-white">Full Feature Comparison</h2>
-            <p className="mt-4 text-2xl text-[#c5c5d6]">Every feature across every plan - see exactly what you get.</p>
+            <h2 className="text-5xl font-black leading-[0.95] tracking-[-0.02em] text-white">Full Feature Comparison</h2>
+            <p className="mt-4 text-lg font-medium text-[#c5c5d6] sm:text-2xl">Every feature across every plan - see exactly what you get.</p>
           </div>
 
           <div className="mx-auto mt-10 max-w-7xl overflow-x-auto rounded-2xl border border-white/10 bg-[#1b1b1b]">
             <table className="w-full min-w-[860px] border-collapse text-left">
               <thead>
                 <tr className="bg-[#20201f]">
-                  <th className="px-5 py-4 text-2xl font-bold text-white">Feature</th>
-                  <th className="px-5 py-4 text-center text-2xl font-bold text-[#8f8fa0]">Starter</th>
-                  <th className="bg-[#212338] px-5 py-4 text-center text-2xl font-bold text-[#bbc3ff]">Growth</th>
-                  <th className="px-5 py-4 text-center text-2xl font-bold text-[#8f8fa0]">Pro</th>
-                  <th className="px-5 py-4 text-center text-2xl font-bold text-[#8f8fa0]">Enterprise</th>
+                  <th className="px-5 py-4 text-xl font-bold tracking-[0.01em] text-white">Feature</th>
+                  <th className="px-5 py-4 text-center text-xl font-bold tracking-[0.01em] text-[#8f8fa0]">Starter</th>
+                  <th className="bg-[#212338] px-5 py-4 text-center text-xl font-bold tracking-[0.01em] text-[#bbc3ff]">Growth</th>
+                  <th className="px-5 py-4 text-center text-xl font-bold tracking-[0.01em] text-[#8f8fa0]">Pro</th>
+                  <th className="px-5 py-4 text-center text-xl font-bold tracking-[0.01em] text-[#8f8fa0]">Enterprise</th>
                 </tr>
               </thead>
               <tbody>
                 {FEATURE_MATRIX.map((row, index) => (
                   <tr className={index % 2 === 0 ? "bg-[#1b1b1b]" : "bg-[#1f1f1f]"} key={row.feature}>
-                    <td className="border-t border-white/10 px-5 py-4 text-xl text-[#c5c5d6]">{row.feature}</td>
-                    <td className="border-t border-white/10 px-5 py-4 text-center text-lg"><FeatureCell value={row.starter} /></td>
-                    <td className="border-t border-white/10 bg-[#1f2234] px-5 py-4 text-center text-lg"><FeatureCell value={row.growth} /></td>
-                    <td className="border-t border-white/10 px-5 py-4 text-center text-lg"><FeatureCell value={row.pro} /></td>
-                    <td className="border-t border-white/10 px-5 py-4 text-center text-lg"><FeatureCell value={row.enterprise} /></td>
+                    <td className="border-t border-white/10 px-5 py-4 text-lg font-medium text-[#c5c5d6]">{row.feature}</td>
+                    <td className="border-t border-white/10 px-5 py-4 text-center text-base"><FeatureCell value={row.starter} /></td>
+                    <td className="border-t border-white/10 bg-[#1f2234] px-5 py-4 text-center text-base"><FeatureCell value={row.growth} /></td>
+                    <td className="border-t border-white/10 px-5 py-4 text-center text-base"><FeatureCell value={row.pro} /></td>
+                    <td className="border-t border-white/10 px-5 py-4 text-center text-base"><FeatureCell value={row.enterprise} /></td>
                   </tr>
                 ))}
               </tbody>

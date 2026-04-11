@@ -456,11 +456,11 @@ export default function RootPage() {
         <section className="bg-[#ececef] px-6 py-20 text-[#101828] lg:px-8" id="pricing-preview">
           <div className="mx-auto max-w-7xl">
             <div className="reveal reveal-zoom mx-auto max-w-3xl text-center" data-reveal>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f25f1f]">Pricing</p>
-              <h2 className="mt-5 text-4xl font-black tracking-tight text-[#0d1325] sm:text-5xl lg:text-6xl">
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#f25f1f]">Pricing</p>
+              <h2 className="mt-5 text-4xl font-black leading-[0.95] tracking-[-0.03em] text-[#0d1325] sm:text-5xl lg:text-6xl">
                 Transparent Pricing. No Surprises.
               </h2>
-              <p className="mx-auto mt-5 max-w-2xl text-lg text-[#5f6f86]">
+              <p className="mx-auto mt-5 max-w-2xl text-lg font-medium text-[#5f6f86] sm:text-[1.35rem]">
                 Monthly. Cancel anytime. No annual lock-in. No per-order commission.
               </p>
             </div>
@@ -474,18 +474,22 @@ export default function RootPage() {
                     }`}
                     key={plan.name}
                   >
-                    <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${plan.highlighted ? "text-[#f25f1f]" : "text-[#8793a5]"}`}>
+                    <p className={`text-xs font-bold uppercase tracking-[0.22em] ${plan.highlighted ? "text-[#f25f1f]" : "text-[#8793a5]"}`}>
                       {plan.name}
                     </p>
-                    <p className="mt-6 text-5xl font-black tracking-tight">{plan.price}</p>
-                    <p className={`mt-4 text-3xl ${plan.highlighted ? "text-[#8d97aa]" : "text-[#67758d]"}`}>{plan.cadence}</p>
+                    <p className="tabular-nums mt-6 text-[clamp(2.5rem,6vw,4.4rem)] font-black leading-none tracking-[-0.03em]">
+                      {plan.price}
+                    </p>
+                    <p className={`mt-4 text-lg font-medium sm:text-2xl ${plan.highlighted ? "text-[#8d97aa]" : "text-[#67758d]"}`}>
+                      {plan.cadence}
+                    </p>
                   </article>
                 ))}
               </div>
             </div>
 
-            <p className="mt-8 text-center text-xl text-[#63728a]">
-              Full feature comparison on <Link className="font-semibold text-[#f25f1f] transition hover:opacity-80" href="/pricing">pricing page</Link>
+            <p className="mt-8 text-center text-lg font-medium text-[#63728a] sm:text-xl">
+              Full feature comparison on <Link className="font-bold text-[#f25f1f] transition hover:opacity-80" href="/pricing">pricing page</Link>
             </p>
           </div>
         </section>
