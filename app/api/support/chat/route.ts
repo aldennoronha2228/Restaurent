@@ -76,6 +76,18 @@ const MODEL_CANDIDATES = [
     'gemini-flash-latest',
 ];
 
+function resolveGlmChatCompletionsUrl(apiUrl: string): string {
+    const base = String(apiUrl || '').trim().replace(/\/+$/, '');
+    if (!base) return '';
+    if (base.endsWith('/chat/completions')) return base;
+    return `${base}/chat/completions`;
+}
+
+function resolveGlmModelCandidates(): string[] {
+    const raw = process.env.GLM4_MODEL || 'glm-4.6v,GLM-4.6V';
+    return Array.from(new Set(raw.split(',').map((m) => m.trim()).filter(Boolean)));
+}
+
 type ProviderReply = {
     rawReply: string;
     selectedModel: string;
@@ -1118,7 +1130,62 @@ async function inferActionFromGemini(apiKey: string, latestUserMessage: string):
     return { type: 'unknown' };
 }
 
-async function inferActionFromAi(latestUserMessage: string, openAiApiKey?: string, openAiModelCandidates?: string[], geminiApiKey?: string): Promise<ParsedAction> {
+async function inferActionFromGlm(apiKey: string, apiUrl: string, latestUserMessage: string): Promise<ParsedAction> {
+    const endpoint = resolveGlmChatCompletionsUrl(apiUrl);
+    let lastError = 'GLM action planner failed';
+
+    for (const modelName of resolveGlmModelCandidates()) {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model: modelName,
+                temperature: 0,
+                max_tokens: 220,
+                messages: [
+                    { role: 'system', content: ACTION_PLANNER_PROMPT },
+                    { role: 'user', content: latestUserMessage.slice(0, 1500) },
+                ],
+            }),
+        });
+
+        if (!response.ok) {
+            const details = await response.text();
+            lastError = `${modelName}: ${response.status} ${details.slice(0, 220)}`;
+            if (response.status === 400 || response.status === 404) continue;
+            throw new Error(`GLM action planner failed: ${response.status}`);
+        }
+
+        const data: any = await response.json();
+        const rawContent = data?.choices?.[0]?.message?.content;
+        const raw = String(
+            Array.isArray(rawContent)
+                ? rawContent
+                    .map((p: any) => (typeof p?.text === 'string' ? p.text : typeof p === 'string' ? p : ''))
+                    .join('\n')
+                : rawContent || ''
+        ).trim();
+        const parsed = extractFirstJsonObject(raw);
+        const action = coerceParsedAction(parsed);
+        if (action.type !== 'unknown') return action;
+    }
+
+    throw new Error(lastError);
+}
+
+async function inferActionFromAi(latestUserMessage: string, glm4ApiKey?: string, glm4ApiUrl?: string, openAiApiKey?: string, openAiModelCandidates?: string[], geminiApiKey?: string): Promise<ParsedAction> {
+    if (glm4ApiKey && glm4ApiUrl) {
+        try {
+            const action = await inferActionFromGlm(glm4ApiKey, glm4ApiUrl, latestUserMessage);
+            if (action.type !== 'unknown') return action;
+        } catch {
+            // Non-fatal fallback.
+        }
+    }
+
     if (openAiApiKey && Array.isArray(openAiModelCandidates) && openAiModelCandidates.length > 0) {
         for (const candidateModel of openAiModelCandidates) {
             try {
@@ -1201,6 +1268,72 @@ function resolveOpenAiModelCandidates(): string[] {
             .filter(Boolean)
     );
     return Array.from(unique);
+}
+
+async function requestGlmReply(apiKey: string, apiUrl: string, messages: ChatMessage[], contextPrompt: string): Promise<ProviderReply> {
+    const endpoint = resolveGlmChatCompletionsUrl(apiUrl);
+    let lastError = 'GLM request failed';
+
+    for (const modelName of resolveGlmModelCandidates()) {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model: modelName,
+                temperature: 0.5,
+                top_p: 0.85,
+                max_tokens: 420,
+                messages: [
+                    {
+                        role: 'system',
+                        content: contextPrompt ? `${SYSTEM_PROMPT}\n\n${contextPrompt}` : SYSTEM_PROMPT,
+                    },
+                    ...messages.map((m) => ({ role: m.role, content: m.content })),
+                ],
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            lastError = `${modelName}: ${response.status} ${errorText.slice(0, 500)}`;
+            if (response.status === 429) {
+                throw Object.assign(new Error('GLM quota exceeded for this API key.'), {
+                    statusCode: 429,
+                    errorCode: 'quota_exceeded',
+                    details: errorText.slice(0, 500),
+                });
+            }
+            if (response.status === 400 || response.status === 404) continue;
+
+            throw Object.assign(new Error(`GLM request failed: ${response.status}`), {
+                statusCode: response.status >= 400 && response.status < 600 ? response.status : 502,
+                details: errorText.slice(0, 500),
+            });
+        }
+
+        const data: any = await response.json();
+        const rawContent = data?.choices?.[0]?.message?.content;
+        const rawReply = String(
+            Array.isArray(rawContent)
+                ? rawContent
+                    .map((p: any) => (typeof p?.text === 'string' ? p.text : typeof p === 'string' ? p : ''))
+                    .join('\n')
+                : rawContent || ''
+        ).trim() || 'I can help with menu optimization, metrics explanation, QR troubleshooting, and staff advice. What would you like to improve first?';
+
+        return {
+            rawReply,
+            selectedModel: data?.model || modelName,
+        };
+    }
+
+    throw Object.assign(new Error('No configured GLM model candidate succeeded.'), {
+        statusCode: 502,
+        details: lastError,
+    });
 }
 
 async function requestGeminiReply(apiKey: string, messages: ChatMessage[], contextPrompt: string): Promise<ProviderReply> {
@@ -1288,13 +1421,15 @@ async function requestGeminiReply(apiKey: string, messages: ChatMessage[], conte
 }
 
 export async function POST(request: NextRequest) {
+    const glm4ApiKey = process.env.GLM4_API_KEY;
+    const glm4ApiUrl = process.env.GLM4_API_URL;
     const openAiApiKey = process.env.OPENAI_API_KEY;
     const openAiModelCandidates = resolveOpenAiModelCandidates();
     const geminiApiKey = process.env.GEMINI_API_KEY;
 
-    if (!openAiApiKey && !geminiApiKey) {
+    if (!(glm4ApiKey && glm4ApiUrl) && !openAiApiKey && !geminiApiKey) {
         return NextResponse.json(
-            { error: 'No AI provider key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' },
+            { error: 'No AI provider key configured. Set GLM4_API_KEY + GLM4_API_URL, OPENAI_API_KEY, or GEMINI_API_KEY.' },
             { status: 500 }
         );
     }
@@ -1356,7 +1491,7 @@ export async function POST(request: NextRequest) {
         const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
         let parsedAction = parseActionFromText(latestUserMessage);
         if (parsedAction.type === 'unknown' && looksLikeControlIntent(latestUserMessage)) {
-            parsedAction = await inferActionFromAi(latestUserMessage, openAiApiKey, openAiModelCandidates, geminiApiKey);
+            parsedAction = await inferActionFromAi(latestUserMessage, glm4ApiKey, glm4ApiUrl, openAiApiKey, openAiModelCandidates, geminiApiKey);
         }
 
         if (parsedAction.type !== 'unknown') {
@@ -1388,7 +1523,9 @@ export async function POST(request: NextRequest) {
 
         let providerReply: ProviderReply;
         try {
-            if (openAiApiKey) {
+            if (glm4ApiKey && glm4ApiUrl) {
+                providerReply = await requestGlmReply(glm4ApiKey, glm4ApiUrl, messages, contextPrompt);
+            } else if (openAiApiKey) {
                 let openAiError: any = null;
                 let resolvedReply: ProviderReply | null = null;
 
@@ -1423,7 +1560,7 @@ export async function POST(request: NextRequest) {
                 providerReply = await requestGeminiReply(geminiApiKey, messages, contextPrompt);
             } else {
                 return NextResponse.json(
-                    { error: 'No AI provider key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' },
+                    { error: 'No AI provider key configured. Set GLM4_API_KEY + GLM4_API_URL, OPENAI_API_KEY, or GEMINI_API_KEY.' },
                     { status: 500 }
                 );
             }

@@ -17,8 +17,8 @@ import { GlobalSearch } from '@/components/dashboard/GlobalSearch';
 import { NotificationBell } from '@/components/dashboard/NotificationBell';
 import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
 import { SubscriptionGuard } from '@/components/dashboard/SubscriptionGuard';
+import { SupportChatWidget } from '@/components/dashboard/SupportChatWidget';
 import NexRestoLogo from '@/components/ui/NexRestoLogo';
-import GeminiSupportChat from '@/components/dashboard/GeminiSupportChat';
 import { hasPermission, getAllowedRoutes, ROUTE_PERMISSIONS, type PermissionType } from '@/components/dashboard/RoleGuard';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
 import { toast } from 'sonner';
@@ -1166,6 +1166,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {urlStoreId && <span className="text-slate-400">({urlStoreId})</span>}
                             </div>
                         </div>
+
                     </div>
                 </div>
 
@@ -1220,7 +1221,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     featureName={upgradeFeature}
                 />
 
-                <GeminiSupportChat />
+                <SupportChatWidget
+                    restaurantId={urlStoreId}
+                    accessToken={session?.access_token || superAdminSession?.access_token || null}
+                />
+
             </div>
         </SubscriptionGuard>
     );

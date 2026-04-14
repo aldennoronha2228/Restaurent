@@ -39,7 +39,7 @@ const TEAM_LIMITS = {
     pro: 10,
 };
 
-export default async function AccountPage() {
+export default function AccountPage() {
     const { user, subscriptionTier, subscriptionStatus, subscriptionEndDate, subscriptionDaysRemaining } = useAuth();
     const { session: superAdminSession } = useSuperAdminAuth();
     const { storeId: tenantId, isSuperAdmin } = useRestaurant();
@@ -75,6 +75,10 @@ export default async function AccountPage() {
     const [copiedPassword, setCopiedPassword] = useState(false);
     const [copiedRowEmail, setCopiedRowEmail] = useState<string | null>(null);
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+    const [showPlanDetails, setShowPlanDetails] = useState(false);
+    const [tierAvailability, setTierAvailability] = useState<Record<string, boolean>>(() =>
+        Object.fromEntries(PRICING_PLANS.map((plan) => [plan.name, true]))
+    );
 
     // ─── Security Token Storage ───────────────────────────────────────────────
     // Once verified, we keep the clean key here to use for all actions.
@@ -91,6 +95,14 @@ export default async function AccountPage() {
                 subscriptionTier === '1k' ? 'Basic ₹1k' :
                     subscriptionTier === 'pro' ? 'Pro' : 'Starter';
     const statusLabel = (subscriptionStatus || 'active').replace('_', ' ');
+    const currentPlanName =
+        subscriptionTier === '2.5k'
+            ? 'Pro Chain'
+            : subscriptionTier === '2k' || subscriptionTier === 'pro'
+                ? 'Growth'
+                : 'Starter';
+    const currentPlan = PRICING_PLANS.find((plan) => plan.name === currentPlanName) || PRICING_PLANS[0];
+    const otherPlans = PRICING_PLANS.filter((plan) => plan.name !== currentPlan.name);
 
     // ─── Fetch Admins (Privileged) ───────────────────────────────────────────
     const fetchAdmins = async (key: string) => {
@@ -327,11 +339,25 @@ export default async function AccountPage() {
         }
     };
 
-    // Fetch tier settings for availability/pricing
-    const tierSettings = await getSubscriptionTierSettings();
-    const tierAvailability: Record<string, boolean> = Object.fromEntries(
-      tierSettings.map(t => [t.name, t.available])
-    );
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const tierSettings = await getSubscriptionTierSettings();
+                if (cancelled) return;
+                setTierAvailability(
+                    Object.fromEntries(tierSettings.map((tier) => [tier.name, tier.available]))
+                );
+            } catch {
+                // Keep default availability if fetch fails.
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     return (
         <RoleGuard requiredPermission="can_view_account">
@@ -365,43 +391,68 @@ export default async function AccountPage() {
                     </div>
                 </div>
 
+                {/* Subscription Summary */}
+                <section className="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                                <CreditCard className="w-5 h-5 text-blue-600" />
+                                Subscription
+                            </h3>
+                            <p className="text-sm text-slate-600 mt-1">
+                                Current tier: <span className="font-semibold text-slate-900">{tierLabel}</span>
+                            </p>
+                            <p className="text-sm text-slate-600">
+                                Status: <span className="font-semibold text-slate-900 capitalize">{statusLabel}</span>
+                            </p>
+                            <p className="text-sm text-slate-600 flex items-center gap-1 mt-1">
+                                <CalendarDays className="w-4 h-4 text-slate-500" />
+                                End date: <span className="font-semibold text-slate-900">{subscriptionEndDate || 'Not set'}</span>
+                                {typeof subscriptionDaysRemaining === 'number' && subscriptionDaysRemaining >= 0 ? (
+                                    <span className="text-xs text-slate-500">({subscriptionDaysRemaining} days left)</span>
+                                ) : null}
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setShowPlanDetails((prev) => !prev)}
+                            className="h-10 px-4 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 transition-colors"
+                        >
+                            {showPlanDetails ? 'Hide Tier Details' : 'Show Current Tier & Details'}
+                        </button>
+                    </div>
+
+                    {showPlanDetails ? (
+                        <div className="mt-4 border-t border-slate-200 pt-4 space-y-3">
+                            <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4">
+                                <p className="text-sm font-semibold text-slate-900">{currentPlan.name}</p>
+                                <p className="text-xs text-slate-600 mt-0.5">{currentPlan.subtitle}</p>
+                                <p className="text-lg font-bold text-slate-900 mt-1">{currentPlan.priceInr}</p>
+                                <ul className="mt-2 text-xs text-slate-700 space-y-1">
+                                    {currentPlan.details.slice(0, 6).map((detail) => (
+                                        <li key={detail}>• {detail}</li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {otherPlans.map((plan) => {
+                                    const isAvailable = tierAvailability[plan.name] !== false;
+                                    return (
+                                        <div key={plan.name} className={cn('rounded-xl border p-3', isAvailable ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/50')}>
+                                            <p className="text-sm font-semibold text-slate-900">{plan.name}</p>
+                                            <p className="text-xs text-slate-600">{plan.priceInr}</p>
+                                            {!isAvailable ? <p className="text-[11px] text-amber-700 mt-1">Temporarily unavailable</p> : null}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ) : null}
+                </section>
+
                 {/* Email Reports Toggle (Pro Only) */}
-                                {/* Subscription Plans (centered, premium style) */}
-                                <section className="py-2">
-                                    <div className="mx-auto grid w-full max-w-3xl gap-5 md:grid-cols-2 xl:grid-cols-3 justify-center">
-                                        {PRICING_PLANS.map((plan) => {
-                                            const isAvailable = tierAvailability[plan.name] !== false;
-                                            const isCurrent = plan.name.toLowerCase().includes((subscriptionTier || '').replace('_', '').replace('prochain', 'pro chain'));
-                                            return (
-                                                <article
-                                                    className={`relative rounded-2xl border p-6 bg-white/95 ${!isAvailable ? 'opacity-70' : ''} ${isCurrent ? 'ring-2 ring-blue-400 border-blue-400' : 'border-slate-200/60'}`}
-                                                    key={plan.name}
-                                                >
-                                                    <h2 className="text-xl font-bold text-slate-900 mb-1">{plan.name}</h2>
-                                                    <p className="text-xs text-slate-500 mb-2">{plan.subtitle}</p>
-                                                    <div className="text-2xl font-black text-slate-900 mb-2">{plan.priceInr}</div>
-                                                    <ul className="text-xs text-slate-700 mb-4 space-y-1">
-                                                        {plan.details.slice(0, 4).map((d, i) => <li key={i}>• {d}</li>)}
-                                                    </ul>
-                                                    <button
-                                                        disabled={!isAvailable || isCurrent}
-                                                        className={`w-full rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                                                            !isAvailable
-                                                                ? 'cursor-not-allowed border-amber-400/25 bg-amber-500/10 text-amber-400'
-                                                                : isCurrent
-                                                                    ? 'border-blue-500 bg-blue-500 text-white cursor-default'
-                                                                    : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-100'
-                                                        }`}
-                                                        type="button"
-                                                        onClick={() => setShowUpgradeModal(true)}
-                                                    >
-                                                        {isCurrent ? 'Current Plan' : isAvailable ? plan.cta : 'Temporarily unavailable'}
-                                                    </button>
-                                                </article>
-                                            );
-                                        })}
-                                    </div>
-                                </section>
 
                 <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-visible">
                     <div className="px-6 py-5 flex items-center justify-between">

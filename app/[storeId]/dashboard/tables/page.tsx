@@ -1272,6 +1272,8 @@ export default function TablesQRCodesPage() {
     const [transformMode, setTransformMode] = useState<'translate' | 'rotate'>('translate');
     const [snapEnabled, setSnapEnabled] = useState(true);
     const [draggingDetectedId, setDraggingDetectedId] = useState<string | null>(null);
+    const [selectedDetectedTableId, setSelectedDetectedTableId] = useState<string | null>(null);
+    const [mobileNudgeStep, setMobileNudgeStep] = useState<2 | 5>(5);
     const detectedDragOffsetRef = useRef<{ x: number; y: number } | null>(null);
     const [isMobileViewport, setIsMobileViewport] = useState(false);
     const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
@@ -1626,6 +1628,28 @@ export default function TablesQRCodesPage() {
             };
         }));
     }, []);
+
+    const nudgeDetectedTable = useCallback((id: string, dx: number, dy: number) => {
+        setDetectedTables((prev) => prev.map((t) => {
+            if (t.id !== id) return t;
+            return {
+                ...t,
+                x: Math.max(0, Math.min(100, Number((t.x + dx).toFixed(2)))),
+                y: Math.max(0, Math.min(100, Number((t.y + dy).toFixed(2)))),
+            };
+        }));
+    }, []);
+
+    const selectedDetectedTable = useMemo(
+        () => detectedTables.find((table) => table.id === selectedDetectedTableId) || null,
+        [detectedTables, selectedDetectedTableId],
+    );
+
+    useEffect(() => {
+        if (!selectedDetectedTableId) return;
+        const exists = detectedTables.some((table) => table.id === selectedDetectedTableId);
+        if (!exists) setSelectedDetectedTableId(null);
+    }, [detectedTables, selectedDetectedTableId]);
 
     const endDetectedDrag = useCallback(() => {
         setDraggingDetectedId(null);
@@ -2211,6 +2235,11 @@ export default function TablesQRCodesPage() {
                                                         <div
                                                             ref={reviewGridRef}
                                                             className="relative h-[68vh] min-h-[360px] max-h-[560px] bg-slate-50 touch-none"
+                                                            onPointerDown={(e) => {
+                                                                if (!isMobileViewport || !selectedDetectedTableId) return;
+                                                                if (e.target !== e.currentTarget) return;
+                                                                placeDetectedTableAtPoint(selectedDetectedTableId, e.clientX, e.clientY);
+                                                            }}
                                                             onPointerUp={endDetectedDrag}
                                                             onPointerLeave={endDetectedDrag}
                                                             onPointerCancel={endDetectedDrag}
@@ -2224,6 +2253,7 @@ export default function TablesQRCodesPage() {
                                                                     key={(table.id || `detected-${index}`) + '-2d'}
                                                                     onPointerDown={(e) => {
                                                                         e.currentTarget.setPointerCapture(e.pointerId);
+                                                                        setSelectedDetectedTableId(table.id);
                                                                         setDraggingDetectedId(table.id);
                                                                         const rect = e.currentTarget.getBoundingClientRect();
                                                                         detectedDragOffsetRef.current = {
@@ -2248,6 +2278,7 @@ export default function TablesQRCodesPage() {
                                                                     onPointerCancel={endDetectedDrag}
                                                                     className={cn(
                                                                         'absolute rounded-2xl cursor-grab border-2 shadow-[0_4px_12px_rgba(15,23,42,0.16)] text-slate-900 flex flex-col items-center justify-center touch-none',
+                                                                        selectedDetectedTableId === table.id && 'ring-2 ring-blue-500/70 ring-offset-2 ring-offset-slate-50',
                                                                         resolveTableShape(table) === 'rectangle' ? 'w-28 h-20' : 'w-24 h-24'
                                                                     )}
                                                                     style={{
@@ -2266,6 +2297,83 @@ export default function TablesQRCodesPage() {
                                                             ))}
                                                         </div>
                                                     )}
+
+                                                    {reviewViewMode === '2d' && isMobileViewport ? (
+                                                        <div className="mt-2 rounded-xl border border-slate-200 bg-white/90 p-2.5">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="text-xs font-medium text-slate-700">
+                                                                    {selectedDetectedTable ? `Selected: ${selectedDetectedTable.id}` : 'Tap a table to select'}
+                                                                </span>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setMobileNudgeStep(2)}
+                                                                        className={cn(
+                                                                            'h-6 px-2 rounded-md text-[10px] font-semibold border transition-colors',
+                                                                            mobileNudgeStep === 2
+                                                                                ? 'bg-slate-900 text-white border-slate-900'
+                                                                                : 'bg-white text-slate-600 border-slate-200'
+                                                                        )}
+                                                                    >
+                                                                        Fine
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setMobileNudgeStep(5)}
+                                                                        className={cn(
+                                                                            'h-6 px-2 rounded-md text-[10px] font-semibold border transition-colors',
+                                                                            mobileNudgeStep === 5
+                                                                                ? 'bg-slate-900 text-white border-slate-900'
+                                                                                : 'bg-white text-slate-600 border-slate-200'
+                                                                        )}
+                                                                    >
+                                                                        Fast
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-1 text-[11px] text-slate-500">Tip: tap empty grid space to place selected table directly.</div>
+                                                            <div className="mt-2 grid grid-cols-3 gap-2 w-[168px] mx-auto">
+                                                                <div />
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={!selectedDetectedTable}
+                                                                    onClick={() => selectedDetectedTable && nudgeDetectedTable(selectedDetectedTable.id, 0, -mobileNudgeStep)}
+                                                                    className="h-11 rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    aria-label="Move selected table up"
+                                                                >
+                                                                    ↑
+                                                                </button>
+                                                                <div />
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={!selectedDetectedTable}
+                                                                    onClick={() => selectedDetectedTable && nudgeDetectedTable(selectedDetectedTable.id, -mobileNudgeStep, 0)}
+                                                                    className="h-11 rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    aria-label="Move selected table left"
+                                                                >
+                                                                    ←
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={!selectedDetectedTable}
+                                                                    onClick={() => selectedDetectedTable && nudgeDetectedTable(selectedDetectedTable.id, 0, mobileNudgeStep)}
+                                                                    className="h-11 rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    aria-label="Move selected table down"
+                                                                >
+                                                                    ↓
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={!selectedDetectedTable}
+                                                                    onClick={() => selectedDetectedTable && nudgeDetectedTable(selectedDetectedTable.id, mobileNudgeStep, 0)}
+                                                                    className="h-11 rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    aria-label="Move selected table right"
+                                                                >
+                                                                    →
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
                                                 </div>
 
                                                 {!isSpatialPro && (
@@ -2317,11 +2425,23 @@ export default function TablesQRCodesPage() {
                                             </div>
                                             <div className="space-y-2 max-h-[430px] overflow-y-auto pr-1">
                                                 {detectedTables.map((table, index) => (
-                                                    <div key={table.id ? `meta-${table.id}` : `meta-${index}`} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                                                    <div
+                                                        key={table.id ? `meta-${table.id}` : `meta-${index}`}
+                                                        onClick={() => setSelectedDetectedTableId(table.id)}
+                                                        className={cn(
+                                                            'rounded-lg border bg-white p-2.5 cursor-pointer transition-colors',
+                                                            selectedDetectedTableId === table.id
+                                                                ? 'border-blue-400 ring-1 ring-blue-200'
+                                                                : 'border-slate-200 hover:border-slate-300'
+                                                        )}
+                                                    >
                                                         <div className="flex items-center justify-between gap-2">
                                                             <span className="text-xs font-medium text-slate-700">{table.id}</span>
                                                             <button
-                                                                onClick={() => setDetectedTables((prev) => prev.filter((x) => x.id !== table.id))}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setDetectedTables((prev) => prev.filter((x) => x.id !== table.id));
+                                                                }}
                                                                 className="w-7 h-7 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center"
                                                                 title="Delete detected table"
                                                             >

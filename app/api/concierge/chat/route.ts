@@ -2,6 +2,104 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { checkRateLimit } from '@/lib/rateLimit';
 
+function resolveGlmChatCompletionsUrl(apiUrl: string): string {
+    const base = String(apiUrl || '').trim().replace(/\/+$/, '');
+    if (!base) return '';
+    if (base.endsWith('/chat/completions')) return base;
+    return `${base}/chat/completions`;
+}
+
+function resolveGlmModelCandidates(): string[] {
+    const raw = process.env.GLM4_MODEL || 'glm-4.6v,GLM-4.6V';
+    return Array.from(new Set(raw.split(',').map((m) => m.trim()).filter(Boolean)));
+}
+
+// GLM-4.6V integration
+async function askGLM4(apiKey: string, apiUrl: string, userInput: string, menu: ConciergeMenuItem[], hour24: number, mealPeriod: string): Promise<ConciergeResponse> {
+    const system = [
+        'You are Nexie, a sophisticated, witty, helpful digital sommelier and food guide for NexResto.',
+        'Be empathetic and premium, but concise.',
+        'Use time-of-day context to prioritize menu choices.',
+        'Respond ONLY as strict JSON with this schema:',
+        '{"empatheticLine":"string","recommendation":{"name":"string","reason":"string"},"pairing":{"name":"string","reason":"string"}}',
+        'Use exact item names from the provided menu for recommendation.name and pairing.name.',
+    ].join('\n');
+
+    const prompt = [
+        `Current hour (24h): ${hour24}`,
+        `Meal period focus: ${mealPeriod}`,
+        `User message: ${userInput}`,
+        'Menu JSON:',
+        JSON.stringify(menu.map((item) => ({
+            name: item.name,
+            description: item.description,
+            category: item.category,
+            price: item.price,
+            type: item.type,
+            available: item.available !== false,
+        }))),
+    ].join('\n\n');
+
+    const endpoint = resolveGlmChatCompletionsUrl(apiUrl);
+    let lastError = 'GLM request failed';
+
+    for (const modelName of resolveGlmModelCandidates()) {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model: modelName,
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: prompt },
+                ],
+                temperature: 0.6,
+            }),
+        });
+
+        if (!response.ok) {
+            const details = await response.text();
+            lastError = `${modelName}: ${response.status} ${details.slice(0, 220)}`;
+            if (response.status === 400 || response.status === 404) {
+                continue;
+            }
+            throw new Error(`GLM request failed (${response.status})`);
+        }
+
+        const payload = await response.json();
+        const rawContent = payload?.choices?.[0]?.message?.content;
+        const text = cleanText(
+            Array.isArray(rawContent)
+                ? rawContent
+                    .map((part: any) => (typeof part?.text === 'string' ? part.text : typeof part === 'string' ? part : ''))
+                    .join('\n')
+                : rawContent || payload?.data || ''
+        );
+        if (!text) {
+            lastError = `${modelName}: empty response body`;
+            continue;
+        }
+
+        const json = JSON.parse(extractJsonObject(text)) as ConciergeResponse;
+        return {
+            empatheticLine: cleanText(json?.empatheticLine),
+            recommendation: {
+                name: cleanText(json?.recommendation?.name),
+                reason: cleanText(json?.recommendation?.reason),
+            },
+            pairing: {
+                name: cleanText(json?.pairing?.name),
+                reason: cleanText(json?.pairing?.reason),
+            },
+        };
+    }
+
+    throw new Error(lastError);
+}
+
 type ConciergeMenuItem = {
     id: string;
     name: string;
@@ -264,11 +362,16 @@ export async function POST(request: NextRequest) {
 
         let aiReply: ConciergeResponse | null = null;
 
+
         try {
+            const glm4Key = process.env.GLM4_API_KEY;
+            const glm4Url = process.env.GLM4_API_URL;
             const geminiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
             const openAiKey = process.env.OPENAI_API_KEY;
 
-            if (geminiKey) {
+            if (glm4Key && glm4Url) {
+                aiReply = await askGLM4(glm4Key, glm4Url, userInput, menu, hour24, mealPeriod);
+            } else if (geminiKey) {
                 aiReply = await askGemini(geminiKey, userInput, menu, hour24, mealPeriod);
             } else if (openAiKey) {
                 aiReply = await askOpenAi(openAiKey, userInput, menu, hour24, mealPeriod);

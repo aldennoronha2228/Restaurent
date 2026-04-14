@@ -7,10 +7,11 @@
 
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-    X, Check, Crown, User
+    X, Check, Crown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { PRICING_PLANS } from '@/lib/pricing';
 
 interface UpgradeModalProps {
     isOpen: boolean;
@@ -18,54 +19,19 @@ interface UpgradeModalProps {
     featureName?: string;
 }
 
-type PlanKey = 'basic' | 'pro';
-
-const PLANS: Record<PlanKey, {
-    name: string;
-    price: number;
-    cadenceLabel: string;
-    summary?: string;
-    accent: string;
-    features: string[];
-}> = {
-    basic: {
-        name: 'Starter',
-        price: 2000,
-        cadenceLabel: '/ Month',
-        accent: 'border-slate-600/40 bg-slate-800/55',
-        features: [
-            'Phone Ordering',
-            'Live Order Queue',
-            'QR Code Generation',
-            'Menu Management',
-            'Single Owner Only',
-        ],
-    },
-    pro: {
-        name: 'Pro',
-        price: 2000,
-        cadenceLabel: '/ Month',
-        summary: 'POPULAR',
-        accent: 'border-fuchsia-500/40 bg-fuchsia-500/15',
-        features: [
-            'Everything in Starter',
-            'Multi-user Roles (Owner, Manager, Staff)',
-            'Role-based Access Control',
-            'Analytics Dashboard',
-            'Inventory Management',
-            'Custom Branding',
-        ],
-    },
-};
+function normalizePriceInr(priceInr: string): string {
+    return String(priceInr || '').replace(/^Rs\s*/i, '₹');
+}
 
 export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps) {
-    const [selectedPlan, setSelectedPlan] = useState<PlanKey>('basic');
-    const selectedPrice = PLANS[selectedPlan].price;
+    const defaultPlanName = PRICING_PLANS.find((plan) => plan.featured)?.name || PRICING_PLANS[0]?.name || 'Starter';
+    const [selectedPlanName, setSelectedPlanName] = useState(defaultPlanName);
+    const selectedPlan = PRICING_PLANS.find((plan) => plan.name === selectedPlanName) || PRICING_PLANS[0];
 
     const handleRequestUpgrade = () => {
         // In production, this would send an email notification to super admin
         // or redirect to a payment page
-        const plan = PLANS[selectedPlan].name;
+        const plan = selectedPlan?.name || 'Selected plan';
         alert(`${plan} upgrade request sent! Our team will contact you shortly.`);
         onClose();
     };
@@ -107,13 +73,12 @@ export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps
 
                             {/* Tier comparison */}
                             <div className="flex flex-col gap-3 mb-4">
-                                {(['basic', 'pro'] as PlanKey[]).map((key) => {
-                                    const plan = PLANS[key];
-                                    const isSelected = selectedPlan === key;
+                                {PRICING_PLANS.map((plan) => {
+                                    const isSelected = selectedPlanName === plan.name;
                                     return (
                                         <button
-                                            key={key}
-                                            onClick={() => setSelectedPlan(key)}
+                                            key={plan.name}
+                                            onClick={() => setSelectedPlanName(plan.name)}
                                             className={cn(
                                                 'w-full rounded-xl border p-4 text-left transition-all relative bg-slate-50',
                                                 isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200 hover:border-blue-300'
@@ -121,13 +86,13 @@ export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps
                                         >
                                             <div className="flex items-center justify-between mb-1">
                                                 <h3 className="text-lg font-bold text-slate-900">{plan.name}</h3>
-                                                <span className="text-lg font-bold text-slate-900">₹{plan.price.toLocaleString('en-IN')}<span className="text-xs font-medium text-slate-500">/mo</span></span>
+                                                <span className="text-lg font-bold text-slate-900">{normalizePriceInr(plan.priceInr)}<span className="text-xs font-medium text-slate-500">/mo</span></span>
                                             </div>
-                                            {plan.summary && (
-                                                <span className="absolute top-3 right-3 text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold tracking-wide">{plan.summary}</span>
+                                            {plan.featured && (
+                                                <span className="absolute top-3 right-3 text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold tracking-wide">POPULAR</span>
                                             )}
                                             <ul className="text-xs text-slate-700 mt-1 space-y-0.5">
-                                                {plan.features.map((feature) => (
+                                                {plan.details.slice(0, 6).map((feature) => (
                                                     <li key={feature} className="flex items-center gap-2">
                                                         <Check className="w-3.5 h-3.5 text-blue-400" />
                                                         <span>{feature}</span>
@@ -147,7 +112,7 @@ export function UpgradeModal({ isOpen, onClose, featureName }: UpgradeModalProps
                                     onClick={handleRequestUpgrade}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-base font-semibold rounded-xl transition-all"
                                 >
-                                    {selectedPlan === 'pro' ? `Upgrade to Pro for ₹${selectedPrice.toLocaleString('en-IN')}` : `Subscribe for ₹${selectedPrice.toLocaleString('en-IN')}`}
+                                    {selectedPlan ? `Subscribe to ${selectedPlan.name} (${normalizePriceInr(selectedPlan.priceInr)})` : 'Continue'}
                                 </motion.button>
                                 <button
                                     onClick={onClose}
