@@ -1,10 +1,12 @@
 import Link from 'next/link';
-import { Apple, ArrowDownToLine, Clock3, Monitor, ShieldCheck, Smartphone } from 'lucide-react';
+import { ArrowDownToLine, Clock3, ShieldCheck } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 type PlatformCard = {
   name: string;
-  icon: ComponentType<{ className?: string }>;
+  icon?: ComponentType<{ className?: string }>;
+  iconSrc?: string;
+  iconAlt?: string;
   status: string;
   details: string;
   available: boolean;
@@ -18,7 +20,8 @@ type PlatformCard = {
 const PLATFORMS: PlatformCard[] = [
   {
     name: 'Android',
-    icon: Smartphone,
+    iconSrc: '/download/android.svg',
+    iconAlt: 'Android logo',
     status: 'Available',
     details: 'Native Android app for live operations, order flow, and service controls.',
     available: true,
@@ -30,7 +33,8 @@ const PLATFORMS: PlatformCard[] = [
   },
   {
     name: 'iOS',
-    icon: Apple,
+    iconSrc: '/download/ios.svg',
+    iconAlt: 'Apple logo',
     status: 'Coming Soon',
     details: 'Optimized iPhone and iPad experience for premium restaurant teams.',
     available: false,
@@ -41,7 +45,8 @@ const PLATFORMS: PlatformCard[] = [
   },
   {
     name: 'Windows',
-    icon: Monitor,
+    iconSrc: '/download/windows.svg',
+    iconAlt: 'Windows logo',
     status: 'Coming Soon',
     details: 'Desktop installer for front desk and operations command workflows.',
     available: false,
@@ -132,7 +137,15 @@ export default function DownloadPage() {
                   <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-white/5 blur-2xl" />
 
                   <div className={`mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl border ${platform.iconTone}`}>
-                    <Icon className="h-6 w-6" />
+                    {platform.iconSrc ? (
+                      <img
+                        src={platform.iconSrc}
+                        alt={platform.iconAlt || `${platform.name} logo`}
+                        className="h-8 w-8 object-contain"
+                      />
+                    ) : Icon ? (
+                      <Icon className="h-6 w-6" />
+                    ) : null}
                   </div>
 
                   <h2 className="text-2xl font-bold text-white">{platform.name}</h2>

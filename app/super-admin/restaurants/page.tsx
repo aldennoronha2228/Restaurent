@@ -650,7 +650,7 @@ export default function RestaurantManager() {
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <div className="relative inline-block">
+                                            <div className={cn("relative inline-block", activeMenu === restaurant.id && "z-[70]")}>
                                                 <button
                                                     onClick={() => setActiveMenu(activeMenu === restaurant.id ? null : restaurant.id)}
                                                     className="p-2 hover:bg-white/12 rounded-lg transition-colors"
@@ -665,7 +665,7 @@ export default function RestaurantManager() {
                                                             animate={{ opacity: 1, scale: 1 }}
                                                             exit={{ opacity: 0, scale: 0.95 }}
                                                             className={cn(
-                                                                'absolute right-0 w-52 bg-[#111112]/96 rounded-2xl border border-white/10 shadow-xl z-30 overflow-hidden backdrop-blur-2xl',
+                                                                'absolute right-0 w-52 bg-[#111112]/96 rounded-2xl border border-white/10 shadow-xl z-[80] overflow-hidden backdrop-blur-2xl pointer-events-auto',
                                                                 shouldOpenUp ? 'bottom-full mb-1' : 'top-full mt-1'
                                                             )}
                                                         >
@@ -1420,7 +1420,7 @@ export default function RestaurantManager() {
             {/* Click outside to close menu */}
             {activeMenu && (
                 <div
-                    className="fixed inset-0 z-10"
+                    className="fixed inset-0 z-20"
                     onClick={() => setActiveMenu(null)}
                 />
             )}
