@@ -17,6 +17,7 @@ import { RoleGuard } from '@/components/dashboard/RoleGuard';
 import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
 import { PRICING_PLANS } from '@/lib/pricing';
 import { getSubscriptionTierSettings } from '@/lib/firebase-super-admin-actions';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 
 interface AdminUser {
     email: string;
@@ -46,8 +47,8 @@ export default function AccountPage() {
 
     const activeUser = user || superAdminSession?.user;
 
-    // Check if Pro tier or God Mode
-    const isPro = isSuperAdmin || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    // Check if tenant tier includes advanced dashboard features.
+    const isPro = isSuperAdmin || hasSubscriptionFeature(subscriptionTier, 'premium_dashboard');
 
     // ─── Email Reports State ──────────────────────────────────────────────────
     const [emailReportsEnabled, setEmailReportsEnabled] = useState(false);

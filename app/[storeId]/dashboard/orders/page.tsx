@@ -14,6 +14,7 @@ import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { collection, doc, onSnapshot, orderBy, query, type Unsubscribe } from 'firebase/firestore';
 import { getActiveToken as resolveActiveToken } from '@/lib/client/get-active-token';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 
 const statusConfig = {
     new: { label: 'New Order', color: 'bg-blue-500', ring: 'ring-blue-500/20', text: 'text-blue-700', bg: 'bg-blue-50' },
@@ -536,7 +537,7 @@ export default function LiveOrdersPage() {
     }, [tenantId, getActiveToken]);
 
     // Check if user has Pro tier - Pro gets Floor Overview, Starter does not
-    const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    const isPro = hasSubscriptionFeature(subscriptionTier, 'premium_dashboard');
 
     // Safety: if tenantId is available, we don't need to wait for tenantLoading
     const waitingForTenant = tenantLoading && !tenantId;

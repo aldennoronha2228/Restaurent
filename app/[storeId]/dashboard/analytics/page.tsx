@@ -18,6 +18,7 @@ import { RoleGuard } from '@/components/dashboard/RoleGuard';
 import { cn } from '@/lib/utils';
 import { downloadReportPDF, generateWeeklySummaryPDF, type DailyReport } from '@/lib/reportPDF';
 import { auth } from '@/lib/firebase';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 
 const revenueData: Array<{ day: string; revenue: number }> = [];
 const topItems: Array<{ name: string; orders: number; revenue: number; trend: number }> = [];
@@ -37,7 +38,7 @@ function ReportsSection() {
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const isPro = subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    const isPro = hasSubscriptionFeature(subscriptionTier, 'premium_dashboard');
 
     const fetchReports = useCallback(async () => {
         if (!tenantId) return;

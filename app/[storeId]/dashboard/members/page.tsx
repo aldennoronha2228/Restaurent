@@ -26,6 +26,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { RoleGuard } from '@/components/dashboard/RoleGuard';
 import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 
 interface AdminUser {
     email: string;
@@ -52,7 +53,7 @@ export default function MembersPage() {
     const { subscriptionTier } = useAuth();
     const { storeId: tenantId, isSuperAdmin } = useRestaurant();
 
-    const isPro = isSuperAdmin || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    const isPro = isSuperAdmin || hasSubscriptionFeature(subscriptionTier, 'advanced_team_roles');
 
     const [admins, setAdmins] = useState<AdminUser[]>([]);
     const [loadingAdmins, setLoadingAdmins] = useState(false);

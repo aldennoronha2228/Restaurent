@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminFirestore } from '@/lib/firebase-admin';
 import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 
 function errorMessage(error: unknown, fallback: string): string {
     return error instanceof Error && error.message ? error.message : fallback;
@@ -39,9 +40,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 });
         }
 
-        const isPro = restData.subscription_tier === 'pro' ||
-            restData.subscription_tier === '2k' ||
-            restData.subscription_tier === '2.5k';
+        const isPro = hasSubscriptionFeature(restData.subscription_tier, 'email_reports');
 
         return NextResponse.json({
             emailReportsEnabled: restData.email_reports_enabled ?? false,
@@ -86,9 +85,7 @@ export async function POST(request: NextRequest) {
         const restDoc = await adminFirestore.doc(`restaurants/${restaurantId}`).get();
         const restData = restDoc.data();
 
-        const isPro = restData?.subscription_tier === 'pro' ||
-            restData?.subscription_tier === '2k' ||
-            restData?.subscription_tier === '2.5k';
+        const isPro = hasSubscriptionFeature(restData?.subscription_tier, 'email_reports');
 
         if (!isPro) {
             return NextResponse.json({

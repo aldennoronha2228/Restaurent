@@ -21,6 +21,7 @@ import { SupportChatWidget } from '@/components/dashboard/SupportChatWidget';
 import NexRestoLogo from '@/components/ui/NexRestoLogo';
 import { hasPermission, getAllowedRoutes, ROUTE_PERMISSIONS, type PermissionType } from '@/components/dashboard/RoleGuard';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 import { toast } from 'sonner';
 
 
@@ -242,8 +243,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
     }, [sessionTenantId, urlStoreId, loading, userRole, isGodMode]);
 
-    // Check if user has Pro tier (strict): do not infer Pro access from impersonation.
-    const isPro = isGodMode || isSuperAdmin || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    // Check if the active tenant tier includes premium dashboard features.
+    const isPro = isGodMode || isSuperAdmin || hasSubscriptionFeature(subscriptionTier, 'premium_dashboard');
     const showEndingSoonReminder =
         !isGodMode &&
         !!subscriptionEndDate &&

@@ -17,6 +17,7 @@ import { useRestaurant } from '@/hooks/useRestaurant';
 import { ProFeatureGate, ProBadge } from '@/components/dashboard/ProFeatureGate';
 import { db } from '@/lib/firebase';
 import { getActiveToken as resolveActiveToken } from '@/lib/client/get-active-token';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 import { addDoc, collection, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
 const MENU_CUSTOMER_PATH = process.env.NEXT_PUBLIC_MENU_CUSTOMER_PATH ?? '/customer';
@@ -1340,10 +1341,7 @@ export default function TablesQRCodesPage() {
             throw new Error(payload?.error || 'Failed to save table layout');
         }
     }, [tenantId, getActiveToken]);
-    // Normalize tier to avoid casing/spacing mismatches from profile docs.
-    const normalizedTier = String(subscriptionTier || '').trim().toLowerCase();
-    // Pro tier can be 'pro', '2k', or '2.5k' (backwards compatibility)
-    const isPro = normalizedTier === 'pro' || normalizedTier === '2k' || normalizedTier === '2.5k';
+    const isPro = hasSubscriptionFeature(subscriptionTier, 'premium_dashboard');
     // 3D spatial mapping should be available to all Pro users.
     const isSpatialPro = isPro;
     const userSubscription = useMemo(() => (isPro ? 'pro' : 'starter'), [isPro]);

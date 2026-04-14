@@ -1,5 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase-admin';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 
 export type DailyReport = {
     id: string;
@@ -16,8 +17,7 @@ export type DailyReport = {
 };
 
 export function isProTier(tier: unknown): boolean {
-    const value = String(tier || '').toLowerCase();
-    return value === 'pro' || value === '2k' || value === '2.5k';
+    return hasSubscriptionFeature(tier, 'email_reports');
 }
 
 export function getYesterdayYmdUtc(): string {

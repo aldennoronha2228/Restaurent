@@ -10,6 +10,7 @@ import { Lock, Sparkles, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { cn } from '@/lib/utils';
+import { hasSubscriptionFeature } from '@/lib/subscription-features';
 
 interface ProFeatureGateProps {
     feature: string;
@@ -25,9 +26,8 @@ interface ProFeatureGateProps {
 export function ProFeatureGate({ feature, description, children, className }: ProFeatureGateProps) {
     const { subscriptionTier, isImpersonating } = useAuth();
     const { session: superAdminSession, userRole: superAdminRole } = useSuperAdminAuth();
-    // Pro tier can be 'pro', '2k', or '2.5k' (backwards compatibility)
     const isSuperAdmin = !!superAdminSession && superAdminRole === 'super_admin';
-    const isPro = isSuperAdmin || isImpersonating || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    const isPro = isSuperAdmin || isImpersonating || hasSubscriptionFeature(subscriptionTier, 'premium_dashboard');
 
     if (isPro) {
         return <>{children}</>;
@@ -93,9 +93,8 @@ export function ProFeatureCard({
 }) {
     const { subscriptionTier, isImpersonating } = useAuth();
     const { session: superAdminSession, userRole: superAdminRole } = useSuperAdminAuth();
-    // Pro tier can be 'pro', '2k', or '2.5k' (backwards compatibility)
     const isSuperAdmin = !!superAdminSession && superAdminRole === 'super_admin';
-    const isPro = isSuperAdmin || isImpersonating || subscriptionTier === 'pro' || subscriptionTier === '2k' || subscriptionTier === '2.5k';
+    const isPro = isSuperAdmin || isImpersonating || hasSubscriptionFeature(subscriptionTier, 'premium_dashboard');
 
     return (
         <div className={cn(
