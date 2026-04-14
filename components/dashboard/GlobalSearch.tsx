@@ -7,7 +7,9 @@ import { Search, ShoppingBag, UtensilsCrossed, QrCode, History, ArrowRight, X, U
 import { cn } from '@/lib/utils';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { hasPermission, type PermissionType } from '@/components/dashboard/RoleGuard';
+import { getActiveToken as resolveActiveToken } from '@/lib/client/get-active-token';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SearchResult {
@@ -118,14 +120,16 @@ export function GlobalSearch() {
     const router = useRouter();
     const params = useParams<{ storeId: string }>();
     const urlStoreId = params?.storeId || '';
-    const { userRole } = useAuth();
+    const { userRole, session } = useAuth();
+    const { session: superAdminSession } = useSuperAdminAuth();
     const canSearchOrders = hasPermission(userRole, 'can_view_orders');
     const canSearchMenu = hasPermission(userRole, 'can_view_menu');
     const getActiveToken = useCallback(async (): Promise<string> => {
-        if (adminAuth.currentUser) return adminAuth.currentUser.getIdToken(true);
-        if (tenantAuth.currentUser) return tenantAuth.currentUser.getIdToken(true);
-        throw new Error('Missing active session');
-    }, []);
+        return resolveActiveToken({
+            tenantSessionToken: session?.access_token,
+            superAdminSessionToken: superAdminSession?.access_token,
+        });
+    }, [session?.access_token, superAdminSession?.access_token]);
 
     const refreshTokens = useCallback(async () => {
         const jobs: Promise<unknown>[] = [];

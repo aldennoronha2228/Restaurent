@@ -9,9 +9,11 @@ import { cn } from '@/lib/utils';
 import { getDefaultTables, getTables, menuItems, type Table } from '@/data/sharedData';
 import { fetchActiveOrders, updateOrderStatus, deleteOrder, subscribeToOrders } from '@/lib/firebase-api';
 import type { DashboardOrder } from '@/lib/types';
+import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { collection, doc, onSnapshot, orderBy, query, type Unsubscribe } from 'firebase/firestore';
-import { adminAuth, tenantAuth } from '@/lib/firebase';
+import { getActiveToken as resolveActiveToken } from '@/lib/client/get-active-token';
 
 const statusConfig = {
     new: { label: 'New Order', color: 'bg-blue-500', ring: 'ring-blue-500/20', text: 'text-blue-700', bg: 'bg-blue-50' },
@@ -273,13 +275,16 @@ export default function LiveOrdersPage() {
     const seenOrderIdsRef = useRef<Set<string>>(new Set());
     const hasUserInteractedRef = useRef(false);
 
+    const { session } = useAuth();
+    const { session: superAdminSession } = useSuperAdminAuth();
     const { storeId: tenantId, db: contextDb, loading: tenantLoading, subscriptionTier } = useRestaurant();
 
     const getActiveToken = useCallback(async (): Promise<string> => {
-        if (tenantAuth.currentUser) return tenantAuth.currentUser.getIdToken(true);
-        if (adminAuth.currentUser) return adminAuth.currentUser.getIdToken(true);
-        throw new Error('Missing active session');
-    }, []);
+        return resolveActiveToken({
+            tenantSessionToken: session?.access_token,
+            superAdminSessionToken: superAdminSession?.access_token,
+        });
+    }, [session?.access_token, superAdminSession?.access_token]);
 
     const loadTablesViaServer = useCallback(async () => {
         if (!tenantId) return;

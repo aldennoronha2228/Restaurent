@@ -4,9 +4,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, ShoppingBag, Clock, X, Trash2 } from 'lucide-react';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
+import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { cn } from '@/lib/utils';
 import { subscribeToOrders } from '@/lib/firebase-api';
+import { getActiveToken as resolveActiveToken } from '@/lib/client/get-active-token';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type NotifType = 'new_order';
@@ -42,6 +45,8 @@ export function NotificationBell() {
     const [useServerFallback, setUseServerFallback] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const audioRef = useRef<AudioContext | null>(null);
+    const { session } = useAuth();
+    const { session: superAdminSession } = useSuperAdminAuth();
     const { storeId, db: contextDb, loading } = useRestaurant();
     const seenOrderIds = useRef(new Set<string>());
 
@@ -83,10 +88,11 @@ export function NotificationBell() {
     }, [playDing]);
 
     const getActiveToken = useCallback(async (): Promise<string> => {
-        if (adminAuth.currentUser) return adminAuth.currentUser.getIdToken(true);
-        if (tenantAuth.currentUser) return tenantAuth.currentUser.getIdToken(true);
-        throw new Error('Missing active session');
-    }, []);
+        return resolveActiveToken({
+            tenantSessionToken: session?.access_token,
+            superAdminSessionToken: superAdminSession?.access_token,
+        });
+    }, [session?.access_token, superAdminSession?.access_token]);
 
     // ── Real-time listener first; fallback to server polling when needed ─────
     useEffect(() => {

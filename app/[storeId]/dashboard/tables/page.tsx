@@ -12,9 +12,11 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { getDefaultTables, setTables as setSharedTables, type Table } from '@/data/sharedData';
 import { useAuth } from '@/context/AuthContext';
+import { useSuperAdminAuth } from '@/context/SuperAdminAuthContext';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { ProFeatureGate, ProBadge } from '@/components/dashboard/ProFeatureGate';
-import { adminAuth, db, tenantAuth } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { getActiveToken as resolveActiveToken } from '@/lib/client/get-active-token';
 import { addDoc, collection, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
 const MENU_CUSTOMER_PATH = process.env.NEXT_PUBLIC_MENU_CUSTOMER_PATH ?? '/customer';
@@ -1285,6 +1287,8 @@ export default function TablesQRCodesPage() {
     const [baseUrl, setBaseUrl] = useState('');
     const floorPlanRef = useRef<HTMLDivElement | null>(null);
     const photoInputRef = useRef<HTMLInputElement | null>(null);
+    const { session } = useAuth();
+    const { session: superAdminSession } = useSuperAdminAuth();
     const { storeId: tenantId, subscriptionTier } = useRestaurant();
     const scopedKey = useCallback((baseKey: string) => {
         if (!tenantId) return baseKey;
@@ -1292,10 +1296,11 @@ export default function TablesQRCodesPage() {
     }, [tenantId]);
 
     const getActiveToken = useCallback(async (): Promise<string> => {
-        if (tenantAuth.currentUser) return tenantAuth.currentUser.getIdToken(true);
-        if (adminAuth.currentUser) return adminAuth.currentUser.getIdToken(true);
-        throw new Error('Missing active session');
-    }, []);
+        return resolveActiveToken({
+            tenantSessionToken: session?.access_token,
+            superAdminSessionToken: superAdminSession?.access_token,
+        });
+    }, [session?.access_token, superAdminSession?.access_token]);
 
     const isSameJson = useCallback((a: unknown, b: unknown) => {
         return JSON.stringify(a) === JSON.stringify(b);
