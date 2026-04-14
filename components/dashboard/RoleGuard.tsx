@@ -128,7 +128,7 @@ export const ROLE_PERMISSIONS = {
         can_manage_menu: false,
         can_view_tables: false,
         can_manage_tables: false,
-        can_view_history: false,
+        can_view_history: true,
         can_view_analytics: false,
         can_view_inventory: false,
         can_manage_inventory: false,
