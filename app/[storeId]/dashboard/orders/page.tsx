@@ -268,7 +268,7 @@ export default function LiveOrdersPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [floorViewMode, setFloorViewMode] = useState<'2d' | '3d'>('2d');
     const [isMobileViewport, setIsMobileViewport] = useState(false);
-    const [useServerFallback, setUseServerFallback] = useState(true);
+    const [useServerFallback, setUseServerFallback] = useState(false);
     const updateQueue = useRef<Record<string, Promise<void>>>({});
     const seenOrderIdsRef = useRef<Set<string>>(new Set());
     const hasUserInteractedRef = useRef(false);

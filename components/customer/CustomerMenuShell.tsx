@@ -10,6 +10,7 @@ import { applyAvailabilityOverrides, seedAvailabilityMap } from '@/lib/menuAvail
 import { getOptimizedHeroImageSrc, getOptimizedMenuItemImageSrc } from '@/lib/image-optimization';
 import { getTenantCustomerStorageKey, getTenantTableStorageKey } from '@/lib/client/storage/tenantKeys';
 import { isValidPhone, normalizePhone } from '@/lib/customer-tracking';
+import { toast } from 'sonner';
 import MenuCatalogLayout from './MenuCatalogLayout';
 import { CartDrawer } from './CartDrawer';
 import { MenuConcierge } from './MenuConcierge';
@@ -451,6 +452,31 @@ export function CustomerMenuShell({ restaurantIdOverride, tenantHomePath, restau
         return false;
     };
 
+    const addMenuItemWithFeedback = (item: {
+        id: string;
+        name: string;
+        description?: string;
+        category?: string;
+        image?: string;
+        price: number;
+        available?: boolean;
+    }): boolean => {
+        if (!requireCapture()) return false;
+        if (item.available === false) return false;
+
+        addToCart({
+            id: item.id,
+            name: item.name,
+            description: item.description || '',
+            category: item.category || 'Others',
+            image: item.image || '',
+            price: item.price,
+        });
+
+        toast.success(`${item.name} added to cart`);
+        return true;
+    };
+
     return (
         <div className="min-h-screen">
             {error && (
@@ -475,8 +501,7 @@ export function CustomerMenuShell({ restaurantIdOverride, tenantHomePath, restau
                     // Filtering is handled in the layout component.
                 }}
                 onAddToCart={(item) => {
-                    if (!requireCapture()) return;
-                    if (item.available) addToCart(item);
+                    return addMenuItemWithFeedback(item);
                 }}
                 onOpenCart={() => {
                     if (!requireCapture()) return;
@@ -489,14 +514,7 @@ export function CustomerMenuShell({ restaurantIdOverride, tenantHomePath, restau
                     restaurantId={restaurantId}
                     menuItems={menuItems}
                     onAddToCart={(item) => {
-                        if (!requireCapture()) return;
-                        if (item.available) {
-                            addToCart({
-                                ...item,
-                                image: item.image || '',
-                                description: item.description || '',
-                            });
-                        }
+                        addMenuItemWithFeedback(item);
                     }}
                 />
             ) : null}

@@ -6,6 +6,7 @@ import { Bell, ShoppingBag, Clock, X, Trash2 } from 'lucide-react';
 import { tenantAuth, adminAuth } from '@/lib/firebase';
 import { useRestaurant } from '@/hooks/useRestaurant';
 import { cn } from '@/lib/utils';
+import { subscribeToOrders } from '@/lib/firebase-api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type NotifType = 'new_order';
@@ -38,10 +39,10 @@ function timeAgo(date: Date): string {
 export function NotificationBell() {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [open, setOpen] = useState(false);
-    const [retryNonce, setRetryNonce] = useState(0);
+    const [useServerFallback, setUseServerFallback] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const audioRef = useRef<AudioContext | null>(null);
-    const { storeId, loading } = useRestaurant();
+    const { storeId, db: contextDb, loading } = useRestaurant();
     const seenOrderIds = useRef(new Set<string>());
 
     const refreshTokens = useCallback(async () => {
@@ -87,9 +88,59 @@ export function NotificationBell() {
         throw new Error('Missing active session');
     }, []);
 
-    // ── Poll server endpoint for newly created "new" orders ─────────────────
+    // ── Real-time listener first; fallback to server polling when needed ─────
     useEffect(() => {
-        if (!storeId || loading) return;
+        if (!storeId || loading || !contextDb || useServerFallback) return;
+
+        let cancelled = false;
+        let seeded = false;
+
+        const unsubscribe = subscribeToOrders(
+            storeId,
+            (orders) => {
+                if (cancelled) return;
+
+                const newOrders = orders.filter((order) => order.status === 'new');
+
+                if (!seeded) {
+                    newOrders.forEach((order) => {
+                        if (order?.id) seenOrderIds.current.add(order.id);
+                    });
+                    seeded = true;
+                    return;
+                }
+
+                newOrders.forEach((order) => {
+                    const orderId = String(order.id || '');
+                    if (!orderId || seenOrderIds.current.has(orderId)) return;
+
+                    seenOrderIds.current.add(orderId);
+                    const createdAt = new Date(String(order.created_at || Date.now()));
+                    const ageMs = Date.now() - createdAt.getTime();
+                    if (Number.isNaN(ageMs) || ageMs > 45000) return;
+
+                    addNotification({
+                        type: 'new_order',
+                        title: '🛎️ New Order',
+                        message: `Table ${String(order.table || '-')} placed an order`,
+                        orderId,
+                    });
+                });
+            },
+            contextDb,
+            () => {
+                setUseServerFallback(true);
+            }
+        );
+
+        return () => {
+            cancelled = true;
+            unsubscribe();
+        };
+    }, [storeId, loading, contextDb, addNotification, useServerFallback]);
+
+    useEffect(() => {
+        if (!storeId || loading || !useServerFallback) return;
 
         let cancelled = false;
         let seeded = false;
@@ -150,7 +201,7 @@ export function NotificationBell() {
             cancelled = true;
             clearInterval(interval);
         };
-    }, [storeId, loading, addNotification, refreshTokens, getActiveToken, retryNonce]);
+    }, [storeId, loading, useServerFallback, addNotification, refreshTokens, getActiveToken]);
 
     // ── Close on outside click ─────────────────────────────────────────────────
     useEffect(() => {

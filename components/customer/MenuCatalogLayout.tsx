@@ -40,7 +40,7 @@ type GourmetCatalogLayoutProps = {
     loading: boolean;
     onSearch?: () => void;
     onSelectCategory: (category: string) => void;
-    onAddToCart: (item: CatalogItem) => void;
+    onAddToCart: (item: CatalogItem) => boolean | void;
     onOpenCart: () => void;
     onOpenOrders: () => void;
 };
@@ -78,6 +78,8 @@ export function GourmetCatalogLayout({
     const [activeCategory, setActiveCategory] = React.useState('All');
     const [query, setQuery] = React.useState('');
     const [foodTypeFilter, setFoodTypeFilter] = React.useState<'all' | 'veg' | 'non-veg'>('all');
+    const [justAddedItemId, setJustAddedItemId] = React.useState<string | null>(null);
+    const justAddedTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const listVariants = {
         hidden: { opacity: 0 },
@@ -98,6 +100,29 @@ export function GourmetCatalogLayout({
     React.useEffect(() => {
         onSelectCategory(activeCategory);
     }, [activeCategory, onSelectCategory]);
+
+    React.useEffect(() => {
+        return () => {
+            if (justAddedTimerRef.current) {
+                clearTimeout(justAddedTimerRef.current);
+            }
+        };
+    }, []);
+
+    const handleAddClick = React.useCallback((item: CatalogItem) => {
+        const added = onAddToCart(item);
+        if (added === false) return;
+
+        setJustAddedItemId(item.id);
+        if (justAddedTimerRef.current) {
+            clearTimeout(justAddedTimerRef.current);
+        }
+
+        justAddedTimerRef.current = setTimeout(() => {
+            setJustAddedItemId((prev) => (prev === item.id ? null : prev));
+            justAddedTimerRef.current = null;
+        }, 1200);
+    }, [onAddToCart]);
 
     const visibleItems = React.useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -272,7 +297,7 @@ export function GourmetCatalogLayout({
                                         <motion.button
                                             type="button"
                                             disabled={!item.available}
-                                            onClick={() => onAddToCart(item)}
+                                            onClick={() => handleAddClick(item)}
                                             whileHover={item.available ? { scale: 1.04 } : undefined}
                                             whileTap={item.available ? { scale: 0.98 } : undefined}
                                             className="rounded-full px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] transition disabled:cursor-not-allowed disabled:bg-[#2f2f2f] disabled:text-[#676666]"
@@ -281,7 +306,11 @@ export function GourmetCatalogLayout({
                                                 color: item.available ? '#171b19' : '#676666',
                                             }}
                                         >
-                                            {item.available ? 'Add to Cart' : 'Sold Out'}
+                                            {!item.available
+                                                ? 'Sold Out'
+                                                : justAddedItemId === item.id
+                                                    ? 'Added'
+                                                    : 'Add to Cart'}
                                         </motion.button>
                                     </div>
                                 </div>

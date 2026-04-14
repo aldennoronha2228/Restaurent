@@ -694,6 +694,15 @@ export default function RootPage() {
             </div>
           </div>
         </div>
+        <div className="mx-auto flex max-w-7xl px-6 pb-6 lg:px-8">
+          <Link
+            className="inline-flex items-center gap-2 rounded-lg border border-[#3e54d3]/60 bg-[#3e54d3]/20 px-5 py-2.5 text-sm font-semibold text-[#d8dbff] transition hover:bg-[#3e54d3]/30"
+            href="/download"
+          >
+            Download App
+            <span aria-hidden="true">-&gt;</span>
+          </Link>
+        </div>
         <div className="mx-auto max-w-7xl px-6 pb-10 text-sm text-stone-500 lg:px-8">(c) 2026 NexResto. Premium Dining Experience.</div>
       </footer>
 
