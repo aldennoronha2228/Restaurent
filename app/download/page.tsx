@@ -88,7 +88,7 @@ export default function DownloadPage() {
 
       <main className="relative z-10 px-6 pb-20 pt-12 lg:px-8 lg:pt-16">
         <section className="mx-auto max-w-7xl">
-          <div className="mb-10 grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
+          <div className="mb-10">
             <div className="max-w-3xl">
             <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#bbc3ff]">
               Platform Downloads
@@ -111,22 +111,6 @@ export default function DownloadPage() {
               </span>
             </div>
             </div>
-
-            <aside className="rounded-2xl border border-white/10 bg-[#20201f]/85 p-5 backdrop-blur-sm">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-[#8f8fa0]">Recommended</p>
-              <p className="mt-2 text-xl font-bold text-white">Android APK is live</p>
-              <p className="mt-2 text-sm leading-relaxed text-[#c5c5d6]">
-                Install the latest Android build now. iOS and Windows releases will be enabled in this same panel once available.
-              </p>
-              <a
-                href="/nexresto-android.apk"
-                download
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#3e54d3]/60 bg-[#3e54d3]/20 px-4 py-2.5 text-sm font-semibold text-[#d8dbff] transition hover:bg-[#3e54d3]/30"
-              >
-                <ArrowDownToLine className="h-4 w-4" />
-                Download Android APK
-              </a>
-            </aside>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
