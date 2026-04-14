@@ -15,6 +15,8 @@ import { Switch } from '@/components/ui/switch';
 import { auth } from '@/lib/firebase';
 import { RoleGuard } from '@/components/dashboard/RoleGuard';
 import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
+import { PRICING_PLANS } from '@/lib/pricing';
+import { getSubscriptionTierSettings } from '@/lib/firebase-super-admin-actions';
 
 interface AdminUser {
     email: string;
@@ -37,7 +39,7 @@ const TEAM_LIMITS = {
     pro: 10,
 };
 
-export default function AccountPage() {
+export default async function AccountPage() {
     const { user, subscriptionTier, subscriptionStatus, subscriptionEndDate, subscriptionDaysRemaining } = useAuth();
     const { session: superAdminSession } = useSuperAdminAuth();
     const { storeId: tenantId, isSuperAdmin } = useRestaurant();
@@ -325,6 +327,12 @@ export default function AccountPage() {
         }
     };
 
+    // Fetch tier settings for availability/pricing
+    const tierSettings = await getSubscriptionTierSettings();
+    const tierAvailability: Record<string, boolean> = Object.fromEntries(
+      tierSettings.map(t => [t.name, t.available])
+    );
+
     return (
         <RoleGuard requiredPermission="can_view_account">
             <div className="max-w-4xl mx-auto space-y-6">
@@ -358,53 +366,42 @@ export default function AccountPage() {
                 </div>
 
                 {/* Email Reports Toggle (Pro Only) */}
-                <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-visible">
-                    <div className="px-6 py-5 flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                                <CreditCard className="w-5 h-5 text-indigo-600" />
-                            </div>
-                            <div>
-                                <h3 className="font-semibold text-slate-900 leading-tight">Subscription Settings</h3>
-                                <p className="text-xs text-slate-500 mt-0.5">Manage your current plan from Account Settings.</p>
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-700">
-                                        {tierLabel}
-                                    </span>
-                                    <span className={cn(
-                                        'px-2.5 py-1 rounded-full text-[11px] font-semibold',
-                                        subscriptionStatus === 'active' || subscriptionStatus === 'trial'
-                                            ? 'bg-emerald-100 text-emerald-700'
-                                            : subscriptionStatus === 'past_due'
-                                                ? 'bg-amber-100 text-amber-700'
-                                                : 'bg-rose-100 text-rose-700'
-                                    )}>
-                                        {statusLabel}
-                                    </span>
-                                </div>
-                                {!!subscriptionEndDate && (
-                                    <div className="mt-2 text-xs text-slate-500 flex items-center gap-1.5">
-                                        <CalendarDays className="w-3.5 h-3.5" />
-                                        Ends on {subscriptionEndDate}
-                                        {typeof subscriptionDaysRemaining === 'number' && (
-                                            <span className="text-slate-400">({subscriptionDaysRemaining} day{subscriptionDaysRemaining === 1 ? '' : 's'} left)</span>
-                                        )}
+                                {/* Subscription Plans (centered, premium style) */}
+                                <section className="py-2">
+                                    <div className="mx-auto grid w-full max-w-3xl gap-5 md:grid-cols-2 xl:grid-cols-3 justify-center">
+                                        {PRICING_PLANS.map((plan) => {
+                                            const isAvailable = tierAvailability[plan.name] !== false;
+                                            const isCurrent = plan.name.toLowerCase().includes((subscriptionTier || '').replace('_', '').replace('prochain', 'pro chain'));
+                                            return (
+                                                <article
+                                                    className={`relative rounded-2xl border p-6 bg-white/95 ${!isAvailable ? 'opacity-70' : ''} ${isCurrent ? 'ring-2 ring-blue-400 border-blue-400' : 'border-slate-200/60'}`}
+                                                    key={plan.name}
+                                                >
+                                                    <h2 className="text-xl font-bold text-slate-900 mb-1">{plan.name}</h2>
+                                                    <p className="text-xs text-slate-500 mb-2">{plan.subtitle}</p>
+                                                    <div className="text-2xl font-black text-slate-900 mb-2">{plan.priceInr}</div>
+                                                    <ul className="text-xs text-slate-700 mb-4 space-y-1">
+                                                        {plan.details.slice(0, 4).map((d, i) => <li key={i}>• {d}</li>)}
+                                                    </ul>
+                                                    <button
+                                                        disabled={!isAvailable || isCurrent}
+                                                        className={`w-full rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                                                            !isAvailable
+                                                                ? 'cursor-not-allowed border-amber-400/25 bg-amber-500/10 text-amber-400'
+                                                                : isCurrent
+                                                                    ? 'border-blue-500 bg-blue-500 text-white cursor-default'
+                                                                    : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-100'
+                                                        }`}
+                                                        type="button"
+                                                        onClick={() => setShowUpgradeModal(true)}
+                                                    >
+                                                        {isCurrent ? 'Current Plan' : isAvailable ? plan.cta : 'Temporarily unavailable'}
+                                                    </button>
+                                                </article>
+                                            );
+                                        })}
                                     </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => setShowUpgradeModal(true)}
-                                className="h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
-                            >
-                                Manage Plan
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                                </section>
 
                 <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-visible">
                     <div className="px-6 py-5 flex items-center justify-between">
