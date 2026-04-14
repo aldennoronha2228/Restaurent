@@ -16,6 +16,109 @@ import { createHash, randomBytes } from 'crypto';
 import { getOwnerEmailForRestaurant } from './reports';
 import { sendDemoRequestLoginUrlEmail, sendSubscriptionReminderEmail } from './email';
 import { getPlatformMaintenanceMode as getPlatformMaintenanceModeValue, setPlatformMaintenanceMode as setPlatformMaintenanceModeValue } from './platform-settings';
+import { PRICING_PLANS } from './pricing';
+
+const SUBSCRIPTION_TIER_SETTINGS_DOC = 'platform_settings/subscription_tiers';
+
+export type SubscriptionTierKey = 'starter' | 'growth' | 'pro_chain';
+
+export interface ManagedSubscriptionTier {
+    key: SubscriptionTierKey;
+    name: string;
+    price_inr: number;
+    available: boolean;
+    description: string;
+    features: string[];
+}
+
+function parseInrPrice(raw: string, fallback: number): number {
+    const digits = String(raw || '').replace(/[^\d]/g, '');
+    const parsed = Number(digits);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    return fallback;
+}
+
+function buildDefaultSubscriptionTierSettings(): Record<SubscriptionTierKey, ManagedSubscriptionTier> {
+    const starterPlan = PRICING_PLANS.find((p) => p.name === 'Starter');
+    const growthPlan = PRICING_PLANS.find((p) => p.name === 'Growth');
+    const proChainPlan = PRICING_PLANS.find((p) => p.name === 'Pro Chain');
+
+    return {
+        starter: {
+            key: 'starter',
+            name: 'Starter',
+            price_inr: parseInrPrice(starterPlan?.priceInr || 'Rs 999', 999),
+            available: true,
+            description: starterPlan?.subtitle || 'Up to 15 tables · Go digital',
+            features: [...(starterPlan?.details || [])],
+        },
+        growth: {
+            key: 'growth',
+            name: 'Growth',
+            price_inr: parseInrPrice(growthPlan?.priceInr || 'Rs 2,499', 2499),
+            available: true,
+            description: growthPlan?.subtitle || 'Unlimited tables · AI-powered',
+            features: [...(growthPlan?.details || [])],
+        },
+        pro_chain: {
+            key: 'pro_chain',
+            name: 'Pro Chain',
+            price_inr: parseInrPrice(proChainPlan?.priceInr || 'Rs 7,999', 7999),
+            available: true,
+            description: proChainPlan?.subtitle || 'Up to 5 branches',
+            features: [...(proChainPlan?.details || [])],
+        },
+    };
+}
+
+function normalizeTierFromStorage(
+    key: SubscriptionTierKey,
+    raw: any,
+    fallback: ManagedSubscriptionTier
+): ManagedSubscriptionTier {
+    const features = Array.isArray(raw?.features)
+        ? raw.features
+            .map((f: unknown) => String(f || '').trim())
+            .filter((f: string) => f.length > 0)
+        : fallback.features;
+
+    return {
+        key,
+        name: String(raw?.name || fallback.name).trim() || fallback.name,
+        price_inr: toNumber(raw?.price_inr, fallback.price_inr),
+        available: typeof raw?.available === 'boolean' ? raw.available : fallback.available,
+        description: String(raw?.description || fallback.description || '').trim() || fallback.description,
+        features,
+    };
+}
+
+async function getTierPricingMap(): Promise<Record<string, number>> {
+    const defaults = buildDefaultSubscriptionTierSettings();
+
+    try {
+        const managed = await getSubscriptionTierSettings();
+        const byKey = new Map<SubscriptionTierKey, ManagedSubscriptionTier>(managed.map((tier) => [tier.key, tier]));
+        const starter = byKey.get('starter')?.price_inr || defaults.starter.price_inr;
+        const growth = byKey.get('growth')?.price_inr || defaults.growth.price_inr;
+        const proChain = byKey.get('pro_chain')?.price_inr || defaults.pro_chain.price_inr;
+
+        return {
+            starter,
+            pro: growth,
+            '1k': starter,
+            '2k': growth,
+            '2.5k': proChain,
+        };
+    } catch {
+        return {
+            starter: defaults.starter.price_inr,
+            pro: defaults.growth.price_inr,
+            '1k': defaults.starter.price_inr,
+            '2k': defaults.growth.price_inr,
+            '2.5k': defaults.pro_chain.price_inr,
+        };
+    }
+}
 
 // Types
 export interface PlatformStats {
@@ -158,9 +261,7 @@ export async function getPlatformStats(): Promise<PlatformStats> {
     const totalRestaurants = restaurantsSnap.size;
 
     // Calculate MRR from subscription tiers
-    const tierPricing: Record<string, number> = {
-        'starter': 1000, 'pro': 2000, '1k': 1000, '2k': 2000, '2.5k': 2500,
-    };
+    const tierPricing = await getTierPricingMap();
 
     let totalRevenue = 0;
     let activeOrders = 0;
@@ -204,20 +305,14 @@ export async function getAllRestaurants(
     page: number = 1,
     limit: number = 10,
     search: string = '',
-    filters?: { tier?: 'all' | 'free' | 'pro' | 'enterprise'; status?: 'all' | 'active' | 'past_due' | 'cancelled' | 'trial' | 'expired' }
+    filters?: { tier?: 'all' | 'starter' | 'growth' | 'pro_chain'; status?: 'all' | 'active' | 'past_due' | 'cancelled' | 'trial' | 'expired' }
 ): Promise<{ data: RestaurantWithOwner[]; total: number; metrics: RestaurantManagerMetrics }> {
     const restaurantsRef = adminFirestore.collection('restaurants');
     let snap = await restaurantsRef.orderBy('created_at', 'desc').get();
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tierPricing: Record<string, number> = {
-        'starter': 1000,
-        'pro': 2000,
-        '1k': 1000,
-        '2k': 2000,
-        '2.5k': 2500,
-    };
+    const tierPricing = await getTierPricingMap();
 
     const normalizeDate = (raw: any): Date | null => {
         if (!raw) return null;
@@ -305,9 +400,9 @@ export async function getAllRestaurants(
     if (filters?.tier && filters.tier !== 'all') {
         filteredDocs = filteredDocs.filter(doc => {
             const tier = doc.data().subscription_tier || 'starter';
-            if (filters.tier === 'free') return tier === 'starter' || tier === '1k';
-            if (filters.tier === 'pro') return tier === 'pro' || tier === '2k';
-            if (filters.tier === 'enterprise') return tier === '2.5k';
+            if (filters.tier === 'starter') return tier === 'starter' || tier === '1k';
+            if (filters.tier === 'growth') return tier === 'pro' || tier === '2k';
+            if (filters.tier === 'pro_chain') return tier === '2.5k';
             return true;
         });
     }
@@ -871,9 +966,14 @@ export async function sendDemoRequestLoginLink(
 
 export async function updateRestaurantSubscription(
     restaurantId: string,
-    tier: 'starter' | 'pro' | '1k' | '2k'
+    tier: 'starter' | 'growth' | 'pro_chain' | 'pro' | '1k' | '2k' | '2.5k'
 ): Promise<{ success: boolean; error?: string }> {
-    const dbTier = tier === '1k' ? 'starter' : tier === '2k' ? 'pro' : tier;
+    const dbTier =
+        tier === 'starter' || tier === '1k'
+            ? 'starter'
+            : tier === 'growth' || tier === 'pro' || tier === '2k'
+                ? 'pro'
+                : '2.5k';
 
     try {
         await adminFirestore.doc(`restaurants/${restaurantId}`).update({
@@ -892,6 +992,91 @@ export async function updateRestaurantSubscription(
         return { success: true };
     } catch (error: any) {
         return { success: false, error: error.message };
+    }
+}
+
+// ─── Subscription Tier Settings ─────────────────────────────────────────────
+
+export async function getSubscriptionTierSettings(): Promise<ManagedSubscriptionTier[]> {
+    const defaults = buildDefaultSubscriptionTierSettings();
+
+    try {
+        const snap = await adminFirestore.doc(SUBSCRIPTION_TIER_SETTINGS_DOC).get();
+        if (!snap.exists) {
+            return [defaults.starter, defaults.growth, defaults.pro_chain];
+        }
+
+        const data = snap.data() as { tiers?: Record<string, any> } | undefined;
+        const tiers = data?.tiers || {};
+
+        return [
+            normalizeTierFromStorage('starter', tiers.starter, defaults.starter),
+            normalizeTierFromStorage('growth', tiers.growth, defaults.growth),
+            normalizeTierFromStorage('pro_chain', tiers.pro_chain, defaults.pro_chain),
+        ];
+    } catch (error) {
+        console.error('Error loading subscription tier settings:', error);
+        return [defaults.starter, defaults.growth, defaults.pro_chain];
+    }
+}
+
+export async function saveSubscriptionTierSettings(
+    tiers: ManagedSubscriptionTier[]
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const defaults = buildDefaultSubscriptionTierSettings();
+        const byKey = new Map<SubscriptionTierKey, ManagedSubscriptionTier>();
+
+        tiers.forEach((tier) => {
+            if (tier.key === 'starter' || tier.key === 'growth' || tier.key === 'pro_chain') {
+                const normalized: ManagedSubscriptionTier = {
+                    key: tier.key,
+                    name: String(tier.name || defaults[tier.key].name).trim() || defaults[tier.key].name,
+                    price_inr: Math.max(0, Math.round(toNumber(tier.price_inr, defaults[tier.key].price_inr))),
+                    available: Boolean(tier.available),
+                    description: String(tier.description || defaults[tier.key].description).trim() || defaults[tier.key].description,
+                    features: Array.isArray(tier.features)
+                        ? tier.features
+                            .map((f) => String(f || '').trim())
+                            .filter((f) => f.length > 0)
+                        : [...defaults[tier.key].features],
+                };
+                byKey.set(tier.key, normalized);
+            }
+        });
+
+        const starter = byKey.get('starter') || defaults.starter;
+        const growth = byKey.get('growth') || defaults.growth;
+        const proChain = byKey.get('pro_chain') || defaults.pro_chain;
+
+        await adminFirestore.doc(SUBSCRIPTION_TIER_SETTINGS_DOC).set({
+            tiers: {
+                starter,
+                growth,
+                pro_chain: proChain,
+            },
+            updated_at: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        await logActivity(
+            'SUBSCRIPTION_TIERS_UPDATED',
+            'Subscription tier settings updated via super admin',
+            'info',
+            {
+                tiers: [starter, growth, proChain].map((tier) => ({
+                    key: tier.key,
+                    available: tier.available,
+                    price_inr: tier.price_inr,
+                    feature_count: tier.features.length,
+                })),
+            }
+        );
+
+        revalidatePath('/super-admin/subscription-tiers');
+        revalidatePath('/super-admin');
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error?.message || 'Failed to save subscription tier settings' };
     }
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useSuperAdminAuth } from "@/context/SuperAdminAuthContext";
+import { HOME_PRICING_PLANS, STARTING_PRICE_INR } from "@/lib/pricing";
 
 type DemoFormData = {
   contactName: string;
@@ -41,20 +42,7 @@ const FEATURE_COMPARISON_ROWS: ComparisonRow[] = [
   { feature: "Customer Support", petpooja: "Basic support", nexresto: "Dedicated support" },
   { feature: "AI-Powered Insights", petpooja: "Basic reports only", nexresto: "AI menu and staff insights" },
   { feature: "Setup Time", petpooja: "2-4 weeks", nexresto: "24-48 hours" },
-  { feature: "Monthly Cost", petpooja: "Starts around Rs 1,500/mo", nexresto: "Rs 999 flat/mo" },
-];
-
-type HomePricingPlan = {
-  name: string;
-  price: string;
-  cadence: string;
-  highlighted?: boolean;
-};
-
-const HOME_PRICING_PLANS: HomePricingPlan[] = [
-  { name: "Starter", price: "Rs 999", cadence: "/month" },
-  { name: "Growth", price: "Rs 2,499", cadence: "/month", highlighted: true },
-  { name: "Pro", price: "Rs 4,999", cadence: "/month" },
+  { feature: "Monthly Cost", petpooja: "Starts around Rs 1,500/mo", nexresto: `Starts at ${STARTING_PRICE_INR}/mo` },
 ];
 
 export default function RootPage() {

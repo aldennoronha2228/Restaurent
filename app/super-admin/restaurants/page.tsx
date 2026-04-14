@@ -60,11 +60,11 @@ const statusOrbColors: Record<string, string> = {
 };
 
 const tierLabels: Record<string, string> = {
-    'starter': 'Basic ₹1k',
-    'pro': 'Pro ₹2k',
-    '1k': 'Basic ₹1k',
-    '2k': 'Pro ₹2k',
-    '2.5k': 'Enterprise ₹2.5k',
+    'starter': 'Starter Rs 999',
+    'pro': 'Growth Rs 2,499',
+    '1k': 'Starter Rs 999',
+    '2k': 'Growth Rs 2,499',
+    '2.5k': 'Pro Chain Rs 7,999',
 };
 
 function parseDateInput(value: string): Date | undefined {
@@ -92,7 +92,7 @@ export default function RestaurantManager() {
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
-    const [tierFilter, setTierFilter] = useState<'all' | 'free' | 'pro' | 'enterprise'>('all');
+    const [tierFilter, setTierFilter] = useState<'all' | 'starter' | 'growth' | 'pro_chain'>('all');
     const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'past_due' | 'cancelled' | 'trial' | 'expired'>('all');
     const [showFilters, setShowFilters] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -175,7 +175,7 @@ export default function RestaurantManager() {
         setProcessingDanger(false);
     };
 
-    const handleTierChange = async (restaurantId: string, tier: 'starter' | 'pro' | '1k' | '2k') => {
+    const handleTierChange = async (restaurantId: string, tier: 'starter' | 'pro' | '1k' | '2k' | '2.5k') => {
         const result = await updateRestaurantSubscription(restaurantId, tier);
         if (result.success) {
             setActionMessage({ type: 'success', text: 'Subscription updated' });
@@ -428,18 +428,23 @@ export default function RestaurantManager() {
                                 >
                                     <p className="text-slate-300 text-sm mb-2">Tier</p>
                                     <div className="flex flex-wrap gap-2 mb-4">
-                                        {['all', 'free', 'pro', 'enterprise'].map((tier) => (
+                                        {[
+                                            { value: 'all', label: 'All' },
+                                            { value: 'starter', label: 'Starter' },
+                                            { value: 'growth', label: 'Growth' },
+                                            { value: 'pro_chain', label: 'Pro Chain' },
+                                        ].map((tier) => (
                                             <button
-                                                key={tier}
-                                                onClick={() => setTierFilter(tier as typeof tierFilter)}
+                                                key={tier.value}
+                                                onClick={() => setTierFilter(tier.value as typeof tierFilter)}
                                                 className={cn(
                                                     "px-3 py-1.5 rounded-lg text-xs capitalize transition-colors",
-                                                    tierFilter === tier
+                                                    tierFilter === tier.value
                                                         ? 'bg-violet-500 text-white'
                                                         : 'bg-white/10 text-slate-300 hover:bg-white/15'
                                                 )}
                                             >
-                                                {tier}
+                                                {tier.label}
                                             </button>
                                         ))}
                                     </div>
@@ -553,7 +558,7 @@ export default function RestaurantManager() {
                                                 <Users className="w-4 h-4 text-slate-400" />
                                                 <div className="flex flex-col">
                                                     <span className="text-slate-300 text-sm font-medium">{restaurant.team_count || 1} member{(restaurant.team_count || 1) !== 1 ? 's' : ''}</span>
-                                                    {restaurant.subscription_tier === 'pro' && restaurant.team_roles && restaurant.team_roles.length > 0 && (
+                                                    {['pro', '2k', '2.5k'].includes(restaurant.subscription_tier) && restaurant.team_roles && restaurant.team_roles.length > 0 && (
                                                         <div className="flex gap-1 mt-0.5">
                                                             {restaurant.team_roles.map((r, i) => (
                                                                 <span key={i} className={cn(
@@ -568,7 +573,7 @@ export default function RestaurantManager() {
                                                             ))}
                                                         </div>
                                                     )}
-                                                    {restaurant.subscription_tier !== 'pro' && (restaurant.team_count || 1) > 1 && (
+                                                    {!['pro', '2k', '2.5k'].includes(restaurant.subscription_tier) && (restaurant.team_count || 1) > 1 && (
                                                         <span className="text-[10px] text-amber-400">⚠ RBAC requires Pro</span>
                                                     )}
                                                 </div>
@@ -947,7 +952,7 @@ export default function RestaurantManager() {
                                 >
                                     <div className="flex items-center justify-between mb-3">
                                         <span className="font-semibold text-lg">Starter</span>
-                                        <span className="font-bold">₹1,000/mo</span>
+                                        <span className="font-bold">Rs 999/mo</span>
                                     </div>
                                     <ul className="space-y-1.5 text-xs opacity-80">
                                         <li className="flex items-center gap-2">
@@ -985,8 +990,8 @@ export default function RestaurantManager() {
                                         Popular
                                     </div>
                                     <div className="flex items-center justify-between mb-3">
-                                        <span className="font-semibold text-lg">Pro</span>
-                                        <span className="font-bold">₹2,000/mo</span>
+                                        <span className="font-semibold text-lg">Growth</span>
+                                        <span className="font-bold">Rs 2,499/mo</span>
                                     </div>
                                     <ul className="space-y-1.5 text-xs opacity-80">
                                         <li className="flex items-center gap-2">
@@ -1012,6 +1017,42 @@ export default function RestaurantManager() {
                                         <li className="flex items-center gap-2">
                                             <Check className="w-3.5 h-3.5" />
                                             Custom Branding
+                                        </li>
+                                    </ul>
+                                </button>
+
+                                {/* Pro Chain Tier */}
+                                <button
+                                    onClick={() => handleTierChange(showTierModal, '2.5k')}
+                                    className={cn(
+                                        "w-full text-left p-4 rounded-xl border transition-all hover:scale-[1.01]",
+                                        tierColors['2.5k']
+                                    )}
+                                >
+                                    <div className="flex items-center justify-between mb-3">
+                                        <span className="font-semibold text-lg">Pro Chain</span>
+                                        <span className="font-bold">Rs 7,999/mo</span>
+                                    </div>
+                                    <ul className="space-y-1.5 text-xs opacity-80">
+                                        <li className="flex items-center gap-2">
+                                            <Check className="w-3.5 h-3.5" />
+                                            Everything in Growth
+                                        </li>
+                                        <li className="flex items-center gap-2">
+                                            <Check className="w-3.5 h-3.5" />
+                                            Multi-branch (up to 5)
+                                        </li>
+                                        <li className="flex items-center gap-2">
+                                            <Check className="w-3.5 h-3.5" />
+                                            White-label customer experience
+                                        </li>
+                                        <li className="flex items-center gap-2">
+                                            <Check className="w-3.5 h-3.5" />
+                                            Cross-branch analytics
+                                        </li>
+                                        <li className="flex items-center gap-2">
+                                            <Check className="w-3.5 h-3.5" />
+                                            Priority support
                                         </li>
                                     </ul>
                                 </button>

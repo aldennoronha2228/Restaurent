@@ -76,12 +76,12 @@ export default function SuperAdminOverview() {
     const [recentLogs, setRecentLogs] = useState<GlobalLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [selectedTier, setSelectedTier] = useState<'starter' | 'pro' | null>(null);
+    const [selectedTier, setSelectedTier] = useState<'starter' | 'growth' | 'pro_chain' | null>(null);
 
     const tierFeatures = {
         starter: {
             name: 'Starter',
-            price: 'Γé╣1,000/mo',
+            price: 'Rs 999/mo',
             description: 'Perfect for small restaurants getting started',
             features: [
                 { name: 'Digital Menu', included: true },
@@ -98,9 +98,9 @@ export default function SuperAdminOverview() {
                 { name: 'Inventory Management', included: false },
             ]
         },
-        pro: {
-            name: 'Pro',
-            price: 'Γé╣2,000/mo',
+        growth: {
+            name: 'Growth',
+            price: 'Rs 2,499/mo',
             description: 'For growing restaurants that need more power',
             features: [
                 { name: 'Digital Menu', included: true },
@@ -115,6 +115,21 @@ export default function SuperAdminOverview() {
                 { name: 'Analytics & Insights', included: true },
                 { name: 'Custom Branding', included: true },
                 { name: 'Inventory Management', included: true },
+            ]
+        },
+        pro_chain: {
+            name: 'Pro Chain',
+            price: 'Rs 7,999/mo',
+            description: 'For multi-branch operations and advanced controls',
+            features: [
+                { name: 'Everything in Growth', included: true },
+                { name: 'Multi-branch (up to 5)', included: true },
+                { name: 'White-label customer PWA', included: true },
+                { name: 'Custom domain support', included: true },
+                { name: 'Cross-branch analytics', included: true },
+                { name: 'Priority WhatsApp support', included: true },
+                { name: 'Early feature access', included: true },
+                { name: 'Dedicated onboarding support', included: true },
             ]
         }
     };
@@ -353,8 +368,9 @@ export default function SuperAdminOverview() {
                 <h2 className="text-lg font-semibold text-white mb-4">Revenue by Tier</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
-                        { tier: 'Γé╣1,000/mo', label: 'Starter', color: 'from-slate-500 to-slate-600', key: 'starter' as const },
-                        { tier: 'Γé╣2,000/mo', label: 'Pro', color: 'from-blue-500 to-cyan-600', key: 'pro' as const },
+                        { tier: 'Rs 999/mo', label: 'Starter', color: 'from-slate-500 to-slate-600', key: 'starter' as const },
+                        { tier: 'Rs 2,499/mo', label: 'Growth', color: 'from-blue-500 to-cyan-600', key: 'growth' as const },
+                        { tier: 'Rs 7,999/mo', label: 'Pro Chain', color: 'from-amber-500 to-orange-600', key: 'pro_chain' as const },
                     ].map((item) => (
                         <button
                             key={item.tier}
@@ -387,7 +403,11 @@ export default function SuperAdminOverview() {
                             <div>
                                 <h3 className={cn(
                                     "text-2xl font-bold",
-                                    selectedTier === 'pro' ? 'text-blue-400' : 'text-white'
+                                    selectedTier === 'growth'
+                                        ? 'text-blue-400'
+                                        : selectedTier === 'pro_chain'
+                                            ? 'text-amber-300'
+                                            : 'text-white'
                                 )}>
                                     {tierFeatures[selectedTier].name}
                                 </h3>
@@ -403,7 +423,11 @@ export default function SuperAdminOverview() {
 
                         <div className={cn(
                             "text-3xl font-bold mb-6 pb-4 border-b border-slate-700",
-                            selectedTier === 'pro' ? 'text-blue-400' : 'text-white'
+                            selectedTier === 'growth'
+                                ? 'text-blue-400'
+                                : selectedTier === 'pro_chain'
+                                    ? 'text-amber-300'
+                                    : 'text-white'
                         )}>
                             {tierFeatures[selectedTier].price}
                         </div>
@@ -414,13 +438,21 @@ export default function SuperAdminOverview() {
                                     <div className={cn(
                                         "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0",
                                         feature.included
-                                            ? selectedTier === 'pro' ? 'bg-blue-500/20' : 'bg-green-500/20'
+                                            ? selectedTier === 'growth'
+                                                ? 'bg-blue-500/20'
+                                                : selectedTier === 'pro_chain'
+                                                    ? 'bg-amber-500/20'
+                                                    : 'bg-green-500/20'
                                             : 'bg-slate-700'
                                     )}>
                                         {feature.included ? (
                                             <Check className={cn(
                                                 "w-3 h-3",
-                                                selectedTier === 'pro' ? 'text-blue-400' : 'text-green-400'
+                                                selectedTier === 'growth'
+                                                    ? 'text-blue-400'
+                                                    : selectedTier === 'pro_chain'
+                                                        ? 'text-amber-300'
+                                                        : 'text-green-400'
                                             )} />
                                         ) : (
                                             <X className="w-3 h-3 text-slate-500" />
