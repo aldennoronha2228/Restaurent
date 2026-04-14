@@ -105,7 +105,6 @@ export default function RestaurantManager() {
     const [showExtendModal, setShowExtendModal] = useState<RestaurantWithOwner | null>(null);
     const [showDangerModal, setShowDangerModal] = useState<{ id: string; name: string } | null>(null);
     const [dangerAction, setDangerAction] = useState<'archive' | 'delete' | null>(null);
-    const [dangerConfirmText, setDangerConfirmText] = useState('');
     const [processingDanger, setProcessingDanger] = useState(false);
 
     // Subscription dates state
@@ -149,30 +148,31 @@ export default function RestaurantManager() {
 
     const handleDangerAction = async () => {
         if (!showDangerModal || !dangerAction) return;
-        const expected = dangerAction === 'delete' ? 'DELETE' : 'ARCHIVE';
-        if (dangerConfirmText.trim().toUpperCase() !== expected) {
-            setActionMessage({ type: 'error', text: `Type ${expected} to confirm` });
-            return;
-        }
+        const selectedAction = dangerAction;
+        const selectedRestaurant = showDangerModal;
 
         setProcessingDanger(true);
-        const result = dangerAction === 'delete'
-            ? await deleteRestaurant(showDangerModal.id)
-            : await archiveRestaurant(showDangerModal.id);
+        try {
+            const result = selectedAction === 'delete'
+                ? await deleteRestaurant(selectedRestaurant.id)
+                : await archiveRestaurant(selectedRestaurant.id);
 
-        if (result.success) {
-            setActionMessage({
-                type: 'success',
-                text: dangerAction === 'delete' ? 'Restaurant deleted' : 'Restaurant archived',
-            });
-            loadRestaurants();
-            setShowDangerModal(null);
-            setDangerAction(null);
-            setDangerConfirmText('');
-        } else {
-            setActionMessage({ type: 'error', text: result.error || 'Action failed' });
+            if (result.success) {
+                setActionMessage({
+                    type: 'success',
+                    text: selectedAction === 'delete' ? 'Restaurant deleted' : 'Restaurant archived',
+                });
+                await loadRestaurants();
+                setShowDangerModal(null);
+                setDangerAction(null);
+            } else {
+                setActionMessage({ type: 'error', text: result.error || 'Action failed' });
+            }
+        } catch (error: any) {
+            setActionMessage({ type: 'error', text: error?.message || 'Action failed' });
+        } finally {
+            setProcessingDanger(false);
         }
-        setProcessingDanger(false);
     };
 
     const handleTierChange = async (restaurantId: string, tier: 'starter' | 'pro' | '1k' | '2k' | '2.5k') => {
@@ -741,7 +741,6 @@ export default function RestaurantManager() {
                                                                 onClick={() => {
                                                                     setShowDangerModal({ id: restaurant.id, name: restaurant.name });
                                                                     setDangerAction('archive');
-                                                                    setDangerConfirmText('');
                                                                     setActiveMenu(null);
                                                                 }}
                                                                 className="w-full flex items-center gap-3 px-4 py-3 text-sm text-amber-300 hover:bg-amber-500/10 transition-colors"
@@ -753,7 +752,6 @@ export default function RestaurantManager() {
                                                                 onClick={() => {
                                                                     setShowDangerModal({ id: restaurant.id, name: restaurant.name });
                                                                     setDangerAction('delete');
-                                                                    setDangerConfirmText('');
                                                                     setActiveMenu(null);
                                                                 }}
                                                                 className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
@@ -858,7 +856,6 @@ export default function RestaurantManager() {
                         onClick={() => {
                             setShowDangerModal(null);
                             setDangerAction(null);
-                            setDangerConfirmText('');
                         }}
                     >
                         <motion.div
@@ -899,14 +896,8 @@ export default function RestaurantManager() {
                             ) : (
                                 <div className="space-y-3">
                                     <p className="text-slate-300 text-sm">
-                                        Type <span className="font-semibold text-white">{dangerAction === 'delete' ? 'DELETE' : 'ARCHIVE'}</span> to confirm.
+                                        You are about to <span className="font-semibold text-white">{dangerAction === 'delete' ? 'delete' : 'archive'}</span> {showDangerModal.name}.
                                     </p>
-                                    <input
-                                        value={dangerConfirmText}
-                                        onChange={(e) => setDangerConfirmText(e.target.value)}
-                                        className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                                        placeholder={dangerAction === 'delete' ? 'Type DELETE' : 'Type ARCHIVE'}
-                                    />
                                     <button
                                         onClick={handleDangerAction}
                                         disabled={processingDanger}
@@ -924,7 +915,6 @@ export default function RestaurantManager() {
                                 onClick={() => {
                                     setShowDangerModal(null);
                                     setDangerAction(null);
-                                    setDangerConfirmText('');
                                 }}
                                 className="w-full mt-4 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors"
                             >
