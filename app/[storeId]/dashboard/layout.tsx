@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
     ShoppingBag, History, UtensilsCrossed, QrCode,
     ChevronLeft, Bell, Search, Menu, X, LogOut, UserCircle,
-    BarChart3, Package, Palette, Sparkles, Lock,
+    BarChart3, Package, Palette, Sparkles, Lock, ChefHat,
     AlertTriangle, Shield, LogIn, ArrowLeft, Users
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 // Base navigation structure — paths are relative to /[storeId]
 const baseNavigation = [
     { name: 'Live Orders', basePath: '/dashboard/orders', icon: ShoppingBag, shortName: 'Orders', proOnly: false, permission: 'can_view_orders' as PermissionType },
+    { name: 'Kitchen Display', basePath: '/dashboard/kds', icon: ChefHat, shortName: 'KDS', proOnly: false, permission: 'can_view_kds' as PermissionType },
     { name: 'Order History', basePath: '/dashboard/history', icon: History, shortName: 'History', proOnly: false, permission: 'can_view_history' as PermissionType },
     { name: 'Customers', basePath: '/dashboard/customers', icon: Users, shortName: 'Customers', proOnly: false, permission: 'can_view_history' as PermissionType },
     { name: 'Waiter Display', basePath: '/dashboard/waiter', icon: Bell, shortName: 'Waiter', proOnly: false, permission: 'can_view_waiter' as PermissionType },
@@ -450,6 +451,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const mobilePrimaryNavigation = filteredNavigation.filter((item) =>
         item.basePath === '/dashboard/orders' ||
+        item.basePath === '/dashboard/kds' ||
         item.basePath === '/dashboard/menu' ||
         item.basePath === '/dashboard/analytics'
     );
