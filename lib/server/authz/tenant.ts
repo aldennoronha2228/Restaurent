@@ -17,7 +17,13 @@ function isAllowedRole(role: string, level: TenantAccessLevel): boolean {
     if (level === 'manage') {
         return role === 'owner' || role === 'admin';
     }
-    return role === 'owner' || role === 'admin' || role === 'staff';
+    return (
+        role === 'owner' ||
+        role === 'admin' ||
+        role === 'manager' ||
+        role === 'staff' ||
+        role === 'kitchen'
+    );
 }
 
 export async function authorizeTenantAccess(
