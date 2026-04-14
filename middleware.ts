@@ -154,12 +154,7 @@ function hasPathTraversal(pathname: string): boolean {
 
 function isAppClient(request: NextRequest): boolean {
     const ua = (request.headers.get('user-agent') || '').toLowerCase();
-    const appHint = (request.nextUrl.searchParams.get('app') || '').toLowerCase();
-
-    const isWindowsDesktopApp = ua.includes('nativefier') || ua.includes('electron');
-    const hasExplicitAppHint = appHint === '1' || appHint === 'true';
-
-    return isWindowsDesktopApp || hasExplicitAppHint;
+    return ua.includes('nativefier') || ua.includes('electron');
 }
 
 // ─── Main middleware ───────────────────────────────────────────────────────────
