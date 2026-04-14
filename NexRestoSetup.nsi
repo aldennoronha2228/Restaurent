@@ -54,6 +54,13 @@ Var MainExe
   !define MUI_UNICON "${SOURCE_DIR}\resources\app\icon.ico"
 !endif
 
+!if /FileExists "${SOURCE_DIR}\resources\app\icon.ico"
+  Icon "${SOURCE_DIR}\resources\app\icon.ico"
+  UninstallIcon "${SOURCE_DIR}\resources\app\icon.ico"
+!else
+  !error "Missing icon file at '${SOURCE_DIR}\\resources\\app\\icon.ico'."
+!endif
+
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES

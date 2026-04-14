@@ -152,6 +152,18 @@ function hasPathTraversal(pathname: string): boolean {
     return pathname.includes('..') || pathname.includes('%2e%2e') || pathname.includes('%2E%2E');
 }
 
+function isAppClient(request: NextRequest): boolean {
+    const ua = (request.headers.get('user-agent') || '').toLowerCase();
+    const xRequestedWith = (request.headers.get('x-requested-with') || '').toLowerCase();
+    const appHint = (request.nextUrl.searchParams.get('app') || '').toLowerCase();
+
+    const isWindowsDesktopApp = ua.includes('nativefier') || ua.includes('electron');
+    const isAndroidWebViewApp = xRequestedWith.length > 0 && xRequestedWith !== 'xmlhttprequest';
+    const hasExplicitAppHint = appHint === '1' || appHint === 'true';
+
+    return isWindowsDesktopApp || isAndroidWebViewApp || hasExplicitAppHint;
+}
+
 // ─── Main middleware ───────────────────────────────────────────────────────────
 
 export default function proxy(request: NextRequest) {
@@ -166,6 +178,18 @@ export default function proxy(request: NextRequest) {
     const securityHeaders = buildSecurityHeaders(nonce, isTablesRoute);
     const isNoIndexRoute = shouldNoIndex(pathname, searchParams);
     const cacheControl = getCacheControl(pathname, isNoIndexRoute);
+
+    if (pathname === '/' && isAppClient(request)) {
+        const loginUrl = request.nextUrl.clone();
+        loginUrl.pathname = '/login';
+        const response = NextResponse.redirect(loginUrl);
+        for (const [k, v] of Object.entries(securityHeaders)) {
+            if (v) response.headers.set(k, v);
+        }
+        response.headers.set('Cache-Control', 'no-store');
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+        return response;
+    }
 
     const isDashboard = pathname.match(/^\/[^/]+\/dashboard(\/.*)?$/);
     const isProtected = isDashboard || PROTECTED_PREFIXES.some(p => pathname.startsWith(p));

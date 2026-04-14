@@ -3,7 +3,7 @@ const path = require('path');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 
-const TARGET_URL = process.env.NEXRESTO_DESKTOP_URL || 'https://nexresto.in/';
+const TARGET_URL = process.env.NEXRESTO_DESKTOP_URL || 'https://nexresto.in/login';
 
 let mainWindow;
 
