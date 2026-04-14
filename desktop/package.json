@@ -1,0 +1,60 @@
+{
+  "name": "nexresto-desktop",
+  "version": "1.0.0",
+  "description": "NexResto Windows desktop wrapper with auto updates",
+  "main": "main.js",
+  "author": "NexResto",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "electron .",
+    "dist": "electron-builder --win nsis --x64",
+    "publish": "electron-builder --win nsis --x64 --publish always"
+  },
+  "dependencies": {
+    "electron-log": "^5.2.4",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^3.0.1"
+  },
+  "build": {
+    "appId": "in.nexresto.desktop",
+    "productName": "NexResto",
+    "artifactName": "NexResto-Setup-${version}.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "aldennoronha2228",
+        "repo": "nexresto"
+      }
+    ]
+  }
+}

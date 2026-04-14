@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
+    "desktop:dev": "npm run dev --prefix desktop",
+    "desktop:dist": "npm run dist --prefix desktop",
+    "desktop:publish": "npm run publish --prefix desktop",
     "build:secure": "next build --webpack && node scripts/obfuscate-build.js && node scripts/verify-obfuscation.js",
     "obfuscate:build": "node scripts/obfuscate-build.js",
     "verify:obfuscation": "node scripts/verify-obfuscation.js",

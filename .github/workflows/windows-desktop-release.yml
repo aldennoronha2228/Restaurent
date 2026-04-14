@@ -1,0 +1,67 @@
+name: Windows Desktop Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Desktop app version (for example 1.0.1)"
+        required: false
+        type: string
+      publish:
+        description: "Publish release to GitHub"
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-desktop:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Apply version from tag
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".Replace('desktop-v', '')
+          npm version $version --no-git-tag-version
+        working-directory: desktop
+
+      - name: Apply version from manual input
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
+        working-directory: desktop
+
+      - name: Build installer
+        run: npm run dist
+        working-directory: desktop
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexresto-windows-installer
+          path: desktop/dist/*.exe
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/desktop-v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        run: npm run publish
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

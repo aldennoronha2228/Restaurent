@@ -130,6 +130,30 @@ Related scripts:
 See detailed notes in:
 - `docs/SECURE_BUILD_OBFUSCATION.md`
 
+## Windows Desktop Auto-Updates
+
+This repository now includes an updater-enabled Windows desktop wrapper in `desktop/`.
+
+How updates work:
+- Existing users on old ZIP/EXE builds must install the new installer one time.
+- After that, the desktop app checks GitHub Releases, downloads updates, and prompts for restart.
+
+Local desktop build commands:
+
+```bash
+npm run desktop:dist
+```
+
+Desktop app local run:
+
+```bash
+npm run desktop:dev
+```
+
+Automated release:
+- Workflow file: `.github/workflows/windows-desktop-release.yml`
+- Trigger by pushing tags like `desktop-v1.0.1` (or use manual workflow dispatch).
+
 ## Project Structure (High-Level)
 
 - `app/`: App Router pages + API routes
