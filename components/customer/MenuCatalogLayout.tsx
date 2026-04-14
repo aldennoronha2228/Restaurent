@@ -151,7 +151,7 @@ export function GourmetCatalogLayout({
             <header className="fixed top-0 z-40 flex h-20 w-full items-center justify-between border-b border-white/10 bg-[#0c0d0e]/72 px-4 text-[#d8d9d8] backdrop-blur-2xl sm:px-6">
                 <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                     <Image
-                        src="/nexresto-mark.svg"
+                        src="/nexresto-logo-current.png?v=20260414"
                         alt="NexResto logo"
                         width={56}
                         height={56}
