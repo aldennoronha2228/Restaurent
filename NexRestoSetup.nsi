@@ -96,6 +96,11 @@ Section "Install"
   ; Copy all app files recursively from detected source folder
   File /r "${SOURCE_DIR}\*.*"
 
+  ; Ensure custom icon file exists for Windows shortcuts/search rendering
+  SetOutPath "$INSTDIR\resources\app"
+  File "${SOURCE_DIR}\resources\app\icon.ico"
+  SetOutPath "$INSTDIR"
+
   ; Store install path in registry
   WriteRegStr HKLM "Software\${COMPANY_NAME}\${APP_NAME}" "Install_Dir" "$INSTDIR"
 

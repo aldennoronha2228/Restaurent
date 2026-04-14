@@ -5817,7 +5817,7 @@ function getDefaultWindowOptions(options) {
         tabbingIdentifier: (0, helpers_1.nativeTabsSupported)()
             ? (_c = options.tabbingIdentifier) !== null && _c !== void 0 ? _c : (0, crypto_1.randomUUID)()
             : undefined,
-        title: options.name,
+        title: options.name || 'NexResto',
         webPreferences: {
             javascript: true,
             nodeIntegration: false,
@@ -10131,6 +10131,13 @@ function onWillPreventUnload(event) {
 }
 exports.onWillPreventUnload = onWillPreventUnload;
 function setupNativefierWindow(options, window) {
+  window.on('page-title-updated', (event, title) => {
+    const normalizedTitle = typeof title === 'string' ? title.trim() : '';
+    if (!normalizedTitle || normalizedTitle.toLowerCase() === 'undefined') {
+      event.preventDefault();
+      window.setTitle((options === null || options === void 0 ? void 0 : options.name) || 'NexResto');
+    }
+  });
     if (options.proxyRules) {
         (0, windowHelpers_1.setProxyRules)(window, options.proxyRules);
     }
