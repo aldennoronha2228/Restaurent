@@ -26,6 +26,31 @@ It includes:
 - Live customer preview from branding panel
 - Branding persistence in Firestore with collection-first fallback
 
+## What's New (April 2026)
+
+- Nexo support chatbot restored in dashboard with:
+	- dark theme UI
+	- compact chat bubbles for short messages
+	- quick suggestions hidden after conversation starts
+	- small `Clear` chat action in header
+- AI provider flow updated:
+	- GLM-4.6V prioritized for concierge and support chat routes
+	- GLM endpoint normalization for base URLs (`/chat/completions` auto-resolved)
+	- model candidate fallback support for GLM naming variants
+	- OpenAI/Gemini retained as fallback providers
+- Mobile table editing improvements in 2D review:
+	- tap-to-select table
+	- table selection highlight
+	- mobile nudge pad with Fine/Fast movement steps
+	- tap empty grid to place selected table
+	- detected table side-list tap selection support
+	- chatbot floating button repositioned on tables page to reduce overlap
+- Account Settings subscription UI simplified:
+	- large always-on tier cards removed
+	- subscription end date remains visible in a compact summary
+	- one toggle button reveals current tier + additional plan details on demand
+- Upgrade modal pricing/cards now use shared `PRICING_PLANS` data to stay in sync with account/pricing pages.
+
 ## Branding System (Latest)
 
 Branding now uses both:
@@ -60,7 +85,9 @@ npm install
 - Firebase client config (`NEXT_PUBLIC_FIREBASE_*`)
 - Firebase Admin credentials (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`)
 - Restaurant defaults (`NEXT_PUBLIC_RESTAURANT_ID`)
-- Optional integrations (Resend, Gemini)
+- Optional integrations:
+	- Email (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`)
+	- AI providers (`GLM4_API_KEY` + `GLM4_API_URL` recommended, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
 
 3. Run dev server:
 
