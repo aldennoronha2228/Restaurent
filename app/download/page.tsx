@@ -47,8 +47,8 @@ const PLATFORMS: PlatformCard[] = [
   },
   {
     name: 'Windows',
-    iconSrc: '/nexresto-mark.svg?v=20260412d',
-    iconAlt: 'NexResto hollow cube icon',
+    iconSrc: '/download/windows.svg',
+    iconAlt: 'Windows logo',
     iconSizeClass: 'h-10 w-10',
     iconBoxSizeClass: 'h-16 w-16',
     status: 'Available',
