@@ -1,4 +1,5 @@
 import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { securityLog } from '@/lib/logger';
 
 export type TenantAccessLevel = 'read' | 'manage';
 
@@ -43,6 +44,14 @@ export async function authorizeTenantAccess(
 
         const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '').trim();
         if (claimRestaurantId === restaurantId && isAllowedRole(role, level)) {
+            securityLog.info('AUTHZ_ADMIN_CHECK', {
+                userId: decoded.uid,
+                restaurantId,
+                level,
+                role,
+                source: 'claims',
+                allowed: true,
+            });
             return { uid: decoded.uid, role, isSuperAdmin: false };
         }
 
@@ -50,12 +59,34 @@ export async function authorizeTenantAccess(
         const staffDoc = await adminFirestore.doc(`restaurants/${restaurantId}/staff/${decoded.uid}`).get();
         const staffRole = normalizeRole(staffDoc.data()?.role);
         if (staffDoc.exists && isAllowedRole(staffRole, level)) {
+            securityLog.info('AUTHZ_ADMIN_CHECK', {
+                userId: decoded.uid,
+                restaurantId,
+                level,
+                role: staffRole,
+                source: 'staff_doc',
+                allowed: true,
+            });
             return { uid: decoded.uid, role: staffRole, isSuperAdmin: false };
         }
 
+        securityLog.warn('AUTHZ_DENIED', {
+            userId: decoded.uid,
+            restaurantId,
+            level,
+            claimRole: role,
+            claimRestaurantId,
+            staffDocExists: staffDoc.exists,
+        });
+
         return null;
     } catch (error) {
-        console.warn('[authz] authorizeTenantAccess failed:', error instanceof Error ? error.message : error);
+        securityLog.error('AUTHZ_DENIED', {
+            restaurantId,
+            level,
+            reason: 'authz_exception',
+            message: error instanceof Error ? error.message : String(error),
+        });
         return null;
     }
 }

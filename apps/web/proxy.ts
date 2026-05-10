@@ -30,6 +30,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? '';
 const IS_PROD = process.env.NODE_ENV === 'production';
+const MIDDLEWARE_DEBUG = process.env.MIDDLEWARE_DEBUG === 'true';
 
 // Paths that require an authenticated session
 const PROTECTED_PREFIXES = ['/super-admin'];
@@ -49,6 +50,12 @@ const NOINDEX_PREFIXES = [
 
 const TENANT_DASHBOARD_PATH = /^\/[^/]+\/dashboard(?:\/.*)?$/;
 const TENANT_MENU_PATH = /^\/[^/]+\/menu\/?$/;
+const PUBLIC_FILE_PATTERN = /\.[^/]+$/;
+
+function logMiddleware(event: string, details: Record<string, unknown>): void {
+    if (!MIDDLEWARE_DEBUG) return;
+    console.info('[middleware]', JSON.stringify({ event, ts: new Date().toISOString(), ...details }));
+}
 
 // ─── Security headers ─────────────────────────────────────────────────────────
 
@@ -152,12 +159,40 @@ function hasPathTraversal(pathname: string): boolean {
     return pathname.includes('..') || pathname.includes('%2e%2e') || pathname.includes('%2E%2E');
 }
 
+function shouldBypassMiddleware(pathname: string): boolean {
+    if (
+        pathname.startsWith('/api') ||
+        pathname.startsWith('/_next/static') ||
+        pathname.startsWith('/_next/image')
+    ) {
+        return true;
+    }
+
+    if (
+        pathname === '/favicon.ico' ||
+        pathname === '/manifest.json' ||
+        pathname === '/site.webmanifest' ||
+        pathname === '/robots.txt' ||
+        pathname === '/sitemap.xml'
+    ) {
+        return true;
+    }
+
+    return PUBLIC_FILE_PATTERN.test(pathname);
+}
+
 // ─── Main middleware ───────────────────────────────────────────────────────────
 
 export default function proxy(request: NextRequest) {
     const { pathname, searchParams } = request.nextUrl;
 
+    if (shouldBypassMiddleware(pathname)) {
+        logMiddleware('bypass', { pathname, reason: 'api_or_static' });
+        return NextResponse.next();
+    }
+
     if (hasPathTraversal(pathname)) {
+        logMiddleware('reject_path_traversal', { pathname });
         return new NextResponse('Bad Request', { status: 400 });
     }
 
@@ -178,6 +213,7 @@ export default function proxy(request: NextRequest) {
 
     const nextParam = searchParams.get('next');
     if (nextParam && !isSafeRedirect(nextParam)) {
+        logMiddleware('sanitize_redirect', { pathname, nextParam });
         const cleanUrl = request.nextUrl.clone();
         cleanUrl.searchParams.delete('next');
         const response = NextResponse.redirect(cleanUrl);
@@ -211,6 +247,8 @@ export default function proxy(request: NextRequest) {
         response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
     }
 
+    logMiddleware('allow', { pathname, isNoIndexRoute, isProtected: Boolean(isProtected) });
+
     return response;
 }
 
@@ -221,11 +259,12 @@ export const config = {
     matcher: [
         /*
          * Match all request paths EXCEPT:
+         * - api routes (including /api/auth/*)
          * - _next/static (static files)
          * - _next/image  (image optimization)
          * - metadata files
          * - any path that clearly targets a file with an extension
          */
-        '/((?!_next/static|_next/image|favicon.ico|manifest.json|site.webmanifest|robots.txt|sitemap.xml|.*\\.[^/]+$).*)',
+        '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|site.webmanifest|robots.txt|sitemap.xml|.*\\.[^/]+$).*)',
     ],
 };

@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { securityLog } from '@/lib/logger';
 
 function normalizeYmd(value: unknown): string | null {
     const raw = String(value || '').trim();
@@ -85,6 +86,7 @@ async function findOwnerRestaurant(normalizedUserEmail: string) {
 export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        securityLog.warn('SESSION_INVALID', { route: '/api/auth/profile', reason: 'missing_authorization' });
         return NextResponse.json({ error: 'Missing authorization' }, { status: 401 });
     }
 
@@ -94,6 +96,7 @@ export async function GET(request: NextRequest) {
         // Verify the Firebase ID token
         const decodedToken = await adminAuth.verifyIdToken(idToken);
         const uid = decodedToken.uid;
+        securityLog.info('AUTH_TENANT_RESOLVED', { route: '/api/auth/profile', userId: uid, phase: 'token_verified' });
 
         // Fetch current claims and record
         const userRecord = await adminAuth.getUser(uid);
@@ -266,9 +269,19 @@ export async function GET(request: NextRequest) {
         }
 
         // No profile found anywhere
+        securityLog.warn('AUTHZ_DENIED', {
+            route: '/api/auth/profile',
+            userId: uid,
+            reason: 'profile_not_found',
+            normalizedEmail: normalizedUserEmail,
+        });
         return NextResponse.json({ profile: null });
     } catch (error: any) {
-        console.error('[/api/auth/profile] Error:', error);
+        securityLog.error('SESSION_INVALID', {
+            route: '/api/auth/profile',
+            reason: 'token_or_profile_exception',
+            message: error?.message || 'Unknown profile error',
+        });
         return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
 }

@@ -1,0 +1,9 @@
+[dotenv@17.3.1] injecting env (39) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+▲ Next.js 16.1.6
+- Local:         http://localhost:3114
+- Network:       http://192.168.1.37:3114
+
+✓ Starting...
+✓ Ready in 933ms
+[middleware] {"event":"allow","ts":"2026-05-10T17:42:51.165Z","pathname":"/hotel-x/dashboard","isNoIndexRoute":true,"isProtected":true}
+[middleware] {"event":"allow","ts":"2026-05-10T17:42:51.382Z","pathname":"/hotel-x/menu","isNoIndexRoute":false,"isProtected":false}
