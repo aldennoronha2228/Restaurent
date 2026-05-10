@@ -1,8 +1,0 @@
-{
-  "/api/auth/profile/route": "app/api/auth/profile/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/page": "app/page.js",
-  "/login/page": "app/login/page.js",
-  "/super-admin/page": "app/super-admin/page.js",
-  "/super-admin/restaurants/page": "app/super-admin/restaurants/page.js"
-}
