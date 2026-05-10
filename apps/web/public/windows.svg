@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title>Windows logo</title>
+  <g fill="#25A8E0">
+    <polygon points="20,28 122,16 122,118 20,118"/>
+    <polygon points="134,14 236,2 236,118 134,118"/>
+    <polygon points="20,138 122,138 122,240 20,226"/>
+    <polygon points="134,138 236,138 236,254 134,242"/>
+  </g>
+</svg>
