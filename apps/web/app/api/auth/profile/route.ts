@@ -19,6 +19,64 @@ function daysUntilYmd(endDateYmd: string): number {
     return Math.round((endDate.getTime() - todayDate.getTime()) / 86400000);
 }
 
+function normalizeEmail(value: unknown): string {
+    return String(value || '').trim().toLowerCase();
+}
+
+function getRestaurantIdFromStaffPath(path: string): string | null {
+    const match = String(path || '').match(/^restaurants\/([^/]+)\/staff\/[^/]+$/);
+    return match?.[1] || null;
+}
+
+async function findStaffMembership(uid: string, normalizedUserEmail: string) {
+    const queries = [
+        uid
+            ? adminFirestore.collectionGroup('staff').where('uid', '==', uid).limit(1).get()
+            : Promise.resolve(null),
+        normalizedUserEmail
+            ? adminFirestore.collectionGroup('staff').where('email', '==', normalizedUserEmail).limit(1).get()
+            : Promise.resolve(null),
+        normalizedUserEmail
+            ? adminFirestore.collectionGroup('staff').where('email_lower', '==', normalizedUserEmail).limit(1).get()
+            : Promise.resolve(null),
+    ];
+
+    const [byUid, byEmail, byEmailLower] = await Promise.all(queries);
+    const firstDoc =
+        (byUid && !byUid.empty ? byUid.docs[0] : null)
+        || (byEmail && !byEmail.empty ? byEmail.docs[0] : null)
+        || (byEmailLower && !byEmailLower.empty ? byEmailLower.docs[0] : null);
+
+    if (!firstDoc) return null;
+
+    const restaurantId = getRestaurantIdFromStaffPath(firstDoc.ref.path);
+    if (!restaurantId) return null;
+
+    return {
+        restaurantId,
+        staffData: firstDoc.data() as Record<string, unknown>,
+    };
+}
+
+async function findOwnerRestaurant(normalizedUserEmail: string) {
+    if (!normalizedUserEmail) return null;
+
+    const [byOwnerEmail, byOwnerEmailLower] = await Promise.all([
+        adminFirestore.collection('restaurants').where('owner_email', '==', normalizedUserEmail).limit(1).get(),
+        adminFirestore.collection('restaurants').where('owner_email_lower', '==', normalizedUserEmail).limit(1).get(),
+    ]);
+
+    if (!byOwnerEmail.empty) {
+        return byOwnerEmail.docs[0];
+    }
+
+    if (!byOwnerEmailLower.empty) {
+        return byOwnerEmailLower.docs[0];
+    }
+
+    return null;
+}
+
 /**
  * GET /api/auth/profile
  * Fetches the current user's profile using Firebase Admin SDK.
@@ -49,7 +107,7 @@ export async function GET(request: NextRequest) {
                 decodedToken.impersonated_by_super_admin || userRecord.customClaims?.impersonated_by_super_admin
             ),
         };
-        const normalizedUserEmail = String(userRecord.email || '').trim().toLowerCase();
+        const normalizedUserEmail = normalizeEmail(userRecord.email);
 
         // ─── Environment-based Super Admin Sync ────────────────────────────────
         const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
@@ -144,102 +202,67 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        // No claims set — check if there's a staff document anywhere
-        // Search all restaurants' staff sub-collections for this user (by uid OR email)
-        const restaurantsSnap = await adminFirestore.collection('restaurants').get();
-        for (const restDoc of restaurantsSnap.docs) {
-            const byUidDoc = await restDoc.ref.collection('staff').doc(uid).get();
-            const byUidData = byUidDoc.exists ? byUidDoc.data()! : null;
+        // No claims set — resolve tenant membership using indexed collectionGroup/owner lookups.
+        const membership = await findStaffMembership(uid, normalizedUserEmail);
+        const ownerRestaurantDoc = membership ? null : await findOwnerRestaurant(normalizedUserEmail);
 
-            let matchedStaffData: Record<string, any> | null = byUidData;
-            if (!matchedStaffData && normalizedUserEmail) {
-                const byEmailSnap = await restDoc.ref
-                    .collection('staff')
-                    .where('email', '==', normalizedUserEmail)
-                    .limit(1)
-                    .get();
-                if (!byEmailSnap.empty) {
-                    matchedStaffData = byEmailSnap.docs[0].data() as Record<string, any>;
-                }
+        const resolvedRestaurantId = membership?.restaurantId || ownerRestaurantDoc?.id || null;
+        const matchedStaffData = membership?.staffData
+            || (ownerRestaurantDoc ? { role: 'owner', email: normalizedUserEmail } : null);
+
+        if (resolvedRestaurantId && matchedStaffData) {
+            const restDoc = await adminFirestore.doc(`restaurants/${resolvedRestaurantId}`).get();
+            const restData = restDoc.data() || {};
+            const resolvedRole = String(matchedStaffData.role || 'staff').trim() || 'staff';
+
+            const endDate = normalizeYmd(restData?.subscription_end_date);
+            const todayYmd = getTodayYmdUtc();
+
+            let effectiveStatus = (restData?.subscription_status || 'active') as string;
+            if (endDate && endDate < todayYmd) {
+                effectiveStatus = 'expired';
+                await adminFirestore.doc(`restaurants/${resolvedRestaurantId}`).update({
+                    subscription_status: 'expired',
+                    account_temporarily_disabled: true,
+                    account_disabled_reason: 'subscription_expired',
+                    account_temporarily_disabled_at: new Date().toISOString(),
+                }).catch(() => { });
             }
 
-            // Extra fallback: some legacy rows may store mixed-case emails,
-            // which won't match exact Firestore where() equality on normalized email.
-            if (!matchedStaffData && normalizedUserEmail) {
-                const staffSnap = await restDoc.ref.collection('staff').limit(200).get();
-                const caseInsensitiveMatch = staffSnap.docs.find((staffDoc) => {
-                    const email = String(staffDoc.data()?.email || '').trim().toLowerCase();
-                    return email !== '' && email === normalizedUserEmail;
-                });
+            const daysUntilEnd = endDate ? daysUntilYmd(endDate) : null;
+            const showEndingSoonReminder =
+                effectiveStatus !== 'cancelled' &&
+                effectiveStatus !== 'past_due' &&
+                typeof daysUntilEnd === 'number' &&
+                daysUntilEnd >= 0 &&
+                daysUntilEnd <= 5;
 
-                if (caseInsensitiveMatch) {
-                    matchedStaffData = caseInsensitiveMatch.data() as Record<string, any>;
-                }
+            // Set custom claims for faster future lookups (non-blocking for profile response).
+            const nextClaims: Record<string, unknown> = {
+                role: resolvedRole,
+                restaurant_id: resolvedRestaurantId,
+                tenant_id: resolvedRestaurantId,
+            };
+            if (claims.must_change_password) {
+                nextClaims.must_change_password = true;
             }
+            await adminAuth.setCustomUserClaims(uid, nextClaims).catch(() => { });
 
-            const restData = restDoc.data();
-            const normalizedOwnerEmail = String(restData?.owner_email || '').trim().toLowerCase();
-
-            // If no staff match, treat owner_email as owner fallback.
-            if (!matchedStaffData && normalizedUserEmail && normalizedOwnerEmail === normalizedUserEmail) {
-                matchedStaffData = { role: 'owner', email: normalizedUserEmail };
-            }
-
-            if (matchedStaffData) {
-                const restData = restDoc.data();
-                const resolvedRole = String(matchedStaffData.role || 'staff').trim() || 'staff';
-
-                const endDate = normalizeYmd(restData?.subscription_end_date);
-                const todayYmd = getTodayYmdUtc();
-
-                let effectiveStatus = (restData?.subscription_status || 'active') as string;
-                if (endDate && endDate < todayYmd) {
-                    effectiveStatus = 'expired';
-                    await adminFirestore.doc(`restaurants/${restDoc.id}`).update({
-                        subscription_status: 'expired',
-                        account_temporarily_disabled: true,
-                        account_disabled_reason: 'subscription_expired',
-                        account_temporarily_disabled_at: new Date().toISOString(),
-                    }).catch(() => { });
-                }
-
-                const daysUntilEnd = endDate ? daysUntilYmd(endDate) : null;
-                const showEndingSoonReminder =
-                    effectiveStatus !== 'cancelled' &&
-                    effectiveStatus !== 'past_due' &&
-                    typeof daysUntilEnd === 'number' &&
-                    daysUntilEnd >= 0 &&
-                    daysUntilEnd <= 5;
-
-                // Set custom claims for faster future lookups
-                const nextClaims: Record<string, unknown> = {
+            return NextResponse.json({
+                profile: {
+                    tenant_id: resolvedRestaurantId,
+                    tenant_name: restData.name || resolvedRestaurantId,
                     role: resolvedRole,
-                    restaurant_id: restDoc.id,
-                    tenant_id: restDoc.id,
-                };
-                if (claims.must_change_password) {
-                    nextClaims.must_change_password = true;
-                }
-                await adminAuth.setCustomUserClaims(uid, {
-                    ...nextClaims,
-                });
-
-                return NextResponse.json({
-                    profile: {
-                        tenant_id: restDoc.id,
-                        tenant_name: restData.name || restDoc.id,
-                        role: resolvedRole,
-                        must_change_password: Boolean(claims.must_change_password),
-                        full_name: matchedStaffData.full_name || userRecord.displayName || userRecord.email,
-                        is_impersonating: Boolean(claims.impersonated_by_super_admin),
-                        subscription_tier: restData.subscription_tier || 'starter',
-                        subscription_status: effectiveStatus,
-                        subscription_end_date: endDate,
-                        subscription_days_remaining: daysUntilEnd,
-                        subscription_ending_soon: showEndingSoonReminder,
-                    },
-                });
-            }
+                    must_change_password: Boolean(claims.must_change_password),
+                    full_name: String(matchedStaffData['full_name'] || userRecord.displayName || userRecord.email || ''),
+                    is_impersonating: Boolean(claims.impersonated_by_super_admin),
+                    subscription_tier: restData.subscription_tier || 'starter',
+                    subscription_status: effectiveStatus,
+                    subscription_end_date: endDate,
+                    subscription_days_remaining: daysUntilEnd,
+                    subscription_ending_soon: showEndingSoonReminder,
+                },
+            });
         }
 
         // No profile found anywhere

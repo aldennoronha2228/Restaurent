@@ -366,9 +366,7 @@ export default function LoginPage() {
                     code === 'auth/wrong-password' ||
                     code === 'auth/user-not-found' ||
                     code === 'auth/invalid-email';
-                const shouldTryAdminFallback =
-                    isCredentialError ||
-                    code === 'auth/internal-error';
+                const shouldTryAdminFallback = isCredentialError;
 
                 if (!shouldTryAdminFallback) throw tenantAuthError;
 
