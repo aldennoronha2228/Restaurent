@@ -3,6 +3,26 @@ import { createHash } from 'crypto';
 import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
+async function hasRestaurantAccess(email: string): Promise<boolean> {
+    const normalizedEmail = String(email || '').toLowerCase().trim();
+    if (!normalizedEmail) return false;
+
+    const [staffSnap, ownerSnap] = await Promise.all([
+        adminFirestore
+            .collectionGroup('staff')
+            .where('email', '==', normalizedEmail)
+            .limit(1)
+            .get(),
+        adminFirestore
+            .collection('restaurants')
+            .where('owner_email', '==', normalizedEmail)
+            .limit(1)
+            .get(),
+    ]);
+
+    return !staffSnap.empty || !ownerSnap.empty;
+}
+
 function slugify(name: string): string {
     return name
         .toLowerCase()
@@ -66,13 +86,46 @@ export async function POST(request: Request) {
         }
 
         let userRecord;
+        let createdNewAuthUser = false;
         try {
-            userRecord = await adminAuth.createUser({
-                email: pending.email,
-                password: pending.password,
-                displayName: pending.full_name,
-                emailVerified: true,
-            });
+            const pendingExistingUid = String(pending.existing_user_id || '').trim();
+            let existingUser = null;
+
+            if (pendingExistingUid) {
+                existingUser = await adminAuth.getUser(pendingExistingUid).catch(() => null);
+            }
+
+            if (!existingUser) {
+                existingUser = await adminAuth.getUserByEmail(normalizedEmail).catch((err: any) => {
+                    if (err?.code === 'auth/user-not-found') return null;
+                    throw err;
+                });
+            }
+
+            if (existingUser) {
+                const claimRole = String(existingUser.customClaims?.role || '').toLowerCase();
+                const hasTenantClaim = Boolean(existingUser.customClaims?.tenant_id || existingUser.customClaims?.restaurant_id);
+                const alreadyLinked = hasTenantClaim || await hasRestaurantAccess(normalizedEmail);
+                const isPrivilegedRole = claimRole === 'owner' || claimRole === 'manager' || claimRole === 'staff' || claimRole === 'kitchen' || claimRole === 'waiter' || claimRole === 'super_admin';
+
+                if (alreadyLinked || isPrivilegedRole) {
+                    return NextResponse.json({ error: 'This email is already registered. Please sign in instead.' }, { status: 409 });
+                }
+
+                userRecord = await adminAuth.updateUser(existingUser.uid, {
+                    password: pending.password,
+                    displayName: pending.full_name,
+                    emailVerified: true,
+                });
+            } else {
+                userRecord = await adminAuth.createUser({
+                    email: pending.email,
+                    password: pending.password,
+                    displayName: pending.full_name,
+                    emailVerified: true,
+                });
+                createdNewAuthUser = true;
+            }
         } catch (err: any) {
             return NextResponse.json({ error: err.message }, { status: 500 });
         }
@@ -131,10 +184,13 @@ export async function POST(request: Request) {
                 signup_completed_at: FieldValue.serverTimestamp(),
                 signup_created_user_id: userId,
                 signup_created_tenant_id: tenantId,
+                signup_reused_existing_user: !createdNewAuthUser,
                 updated_at: FieldValue.serverTimestamp(),
             }, { merge: true });
         } catch (err: any) {
-            await adminAuth.deleteUser(userId);
+            if (createdNewAuthUser) {
+                await adminAuth.deleteUser(userId);
+            }
             return NextResponse.json({ error: err.message }, { status: 500 });
         }
 

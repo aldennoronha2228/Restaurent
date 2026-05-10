@@ -224,13 +224,15 @@ export default function RootPage() {
     <div className="min-h-screen bg-[#131313] text-[#e5e2e1]">
       <header className="fixed top-0 z-50 w-full border-b border-white/5 bg-black/60 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
-          <div className="flex items-center gap-3">
-            <img
-              alt="NexResto logo mark"
-              className="h-9 w-9 rounded-xl border border-white/15 bg-black/30 p-1"
-              src="/nexresto-mark.svg?v=20260415a"
-            />
-            <span className="text-xl font-bold tracking-tight text-white">NexResto</span>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-white/10 bg-[#111111]">
+              <img
+                alt="NexResto logo mark"
+                className="h-[26px] w-[26px] object-contain"
+                src="/nexresto-mark.svg?v=20260415a"
+              />
+            </div>
+            <span className="text-[25px] font-bold tracking-[-0.03em] text-white sm:text-[25px]">NexResto</span>
           </div>
 
           <nav className="hidden items-center gap-6 text-sm text-stone-300 md:flex">
@@ -656,7 +658,7 @@ export default function RootPage() {
               <img
                 alt="NexResto logo mark"
                 className="h-7 w-7 rounded-md border border-white/15 bg-black/30 p-1"
-                src="/nexresto-mark.svg?v=20260415a"
+                src="/nexresto-mark.jpg?v=20260415a"
               />
               <p className="text-lg font-bold text-white">NexResto</p>
             </div>

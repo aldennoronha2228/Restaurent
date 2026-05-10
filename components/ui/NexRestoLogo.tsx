@@ -12,10 +12,10 @@ export default function NexRestoLogo({ variant = 'mark', className, priority = f
     if (variant === 'full') {
         return (
             <Image
-                src={`/nexresto-mark.svg?v=${logoVersion}`}
+                src={`/nexresto-logo-current.png?v=${logoVersion}`}
                 alt="NexResto"
-                width={64}
-                height={64}
+                width={240}
+                height={84}
                 className={className}
                 priority={priority}
                 unoptimized

@@ -3,6 +3,26 @@ import { createHash } from 'crypto';
 import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
 import { sendOtpEmail } from '@/lib/email';
 
+async function hasRestaurantAccess(email: string): Promise<boolean> {
+    const normalizedEmail = String(email || '').toLowerCase().trim();
+    if (!normalizedEmail) return false;
+
+    const [staffSnap, ownerSnap] = await Promise.all([
+        adminFirestore
+            .collectionGroup('staff')
+            .where('email', '==', normalizedEmail)
+            .limit(1)
+            .get(),
+        adminFirestore
+            .collection('restaurants')
+            .where('owner_email', '==', normalizedEmail)
+            .limit(1)
+            .get(),
+    ]);
+
+    return !staffSnap.empty || !ownerSnap.empty;
+}
+
 function generateOTP(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -66,9 +86,19 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invite link has expired. Request a new link.' }, { status: 410 });
         }
 
+        let existingUid: string | null = null;
         try {
-            await adminAuth.getUserByEmail(normalizedEmail);
-            return NextResponse.json({ error: 'This email is already registered. Please sign in instead.' }, { status: 409 });
+            const existingUser = await adminAuth.getUserByEmail(normalizedEmail);
+            existingUid = existingUser.uid;
+
+            const claimRole = String(existingUser.customClaims?.role || '').toLowerCase();
+            const hasTenantClaim = Boolean(existingUser.customClaims?.tenant_id || existingUser.customClaims?.restaurant_id);
+            const alreadyLinked = hasTenantClaim || await hasRestaurantAccess(normalizedEmail);
+            const isPrivilegedRole = claimRole === 'owner' || claimRole === 'manager' || claimRole === 'staff' || claimRole === 'kitchen' || claimRole === 'waiter' || claimRole === 'super_admin';
+
+            if (alreadyLinked || isPrivilegedRole) {
+                return NextResponse.json({ error: 'This email is already registered. Please sign in instead.' }, { status: 409 });
+            }
         } catch (err: any) {
             if (err.code !== 'auth/user-not-found') {
                 throw err;
@@ -84,6 +114,7 @@ export async function POST(request: Request) {
             full_name: String(fullName).trim(),
             restaurant_name: String(restaurantName).trim(),
             master_pin: String(masterPin),
+            existing_user_id: existingUid,
             otp,
             expires_at: expiresAtIso,
             created_at: new Date().toISOString(),
