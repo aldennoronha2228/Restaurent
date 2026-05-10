@@ -23,6 +23,7 @@ import { securityLog } from '@/lib/logger';
 const SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const SUPER_ADMIN_SESSION_EXPIRES_AT_KEY = 'nexresto-super-admin-session-expires-at';
 const SUPER_ADMIN_SESSION_UID_KEY = 'nexresto-super-admin-session-uid';
+const AUTH_RESOLVE_TIMEOUT_MS = 12000;
 
 function readStoredMs(storageKey: string): number | null {
     if (typeof window === 'undefined') return null;
@@ -67,6 +68,25 @@ function isRecentSignIn(user: User, windowMs: number = 2 * 60 * 1000): boolean {
     const signedInAtMs = Date.parse(raw);
     if (!Number.isFinite(signedInAtMs)) return false;
     return Date.now() - signedInAtMs <= windowMs;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        promise.then(
+            value => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            error => {
+                clearTimeout(timer);
+                reject(error);
+            },
+        );
+    });
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -127,7 +147,7 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
             }
             sessionStorage.removeItem('pending_admin_token');
             import('firebase/auth').then(({ signInWithCustomToken }) => {
-                signInWithCustomToken(adminAuth, pendingToken)
+                withTimeout(signInWithCustomToken(adminAuth, pendingToken), AUTH_RESOLVE_TIMEOUT_MS, 'Super-admin token bootstrap')
                     .catch(err => {
                         console.warn('[SuperAdminAuth] Could not use pending token:', err);
                         if (isActive) {
@@ -190,7 +210,7 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
-            const idToken = await user.getIdToken();
+            const idToken = await withTimeout(user.getIdToken(), AUTH_RESOLVE_TIMEOUT_MS, 'Admin session token');
 
             // Set session, but keep loading:true if we need to fetch role
             if (isActive) {
@@ -217,16 +237,20 @@ export function SuperAdminAuthProvider({ children }: { children: ReactNode }) {
 
             // Check custom claims for super_admin role
             try {
-                const tokenResult = await user.getIdTokenResult();
+                const tokenResult = await withTimeout(user.getIdTokenResult(), AUTH_RESOLVE_TIMEOUT_MS, 'Admin token claims');
                 const role = (tokenResult.claims.role as string) || null;
 
                 // Also check via API as fallback
                 let resolvedRole = role;
                 if (!resolvedRole) {
                     try {
-                        const res = await fetch('/api/auth/profile', {
-                            headers: { Authorization: `Bearer ${idToken}` },
-                        });
+                        const res = await withTimeout(
+                            fetch('/api/auth/profile', {
+                                headers: { Authorization: `Bearer ${idToken}` },
+                            }),
+                            AUTH_RESOLVE_TIMEOUT_MS,
+                            'Admin profile request',
+                        );
                         if (res.ok) {
                             const { profile } = await res.json();
                             resolvedRole = profile?.role || null;

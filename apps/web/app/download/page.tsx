@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowDownToLine, Clock3, ShieldCheck } from 'lucide-react';
 import type { ComponentType } from 'react';
+import NexRestoLogo from '@/components/ui/NexRestoLogo';
 
 type PlatformCard = {
   name: string;
@@ -73,13 +74,11 @@ export default function DownloadPage() {
 
       <header className="relative z-10 border-b border-white/5 bg-black/55 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
-          <div className="flex items-center gap-3">
-            <img
-              alt="NexResto logo mark"
-              className="h-10 w-10 rounded-xl border border-white/15 bg-black/30 p-1"
-              src="/nexresto-mark.svg?v=20260415a"
-            />
-            <span className="text-xl font-bold tracking-tight text-white">NexResto Download Center</span>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-white/10 bg-[#111111]">
+              <NexRestoLogo className="h-[26px] w-[26px] object-contain" priority />
+            </div>
+            <span className="text-[25px] font-bold tracking-[-0.03em] text-white sm:text-[25px]">NexResto</span>
           </div>
 
           <Link
@@ -177,12 +176,10 @@ export default function DownloadPage() {
       <footer className="relative z-10 border-t border-white/5 bg-black/60">
         <div className="mx-auto grid max-w-7xl gap-8 px-6 py-12 md:grid-cols-4 lg:px-8">
           <div className="md:col-span-2">
-            <div className="flex items-center gap-2">
-              <img
-                alt="NexResto logo mark"
-                className="h-7 w-7 rounded-md border border-white/15 bg-black/30 p-1"
-                src="/nexresto-mark.svg?v=20260415a"
-              />
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[14px] border border-white/10 bg-[#111111]">
+                <NexRestoLogo className="h-[30px] w-[30px] object-contain" />
+              </div>
               <p className="text-lg font-bold text-white">NexResto</p>
             </div>
             <p className="mt-3 max-w-sm text-sm text-stone-400">Crafting the digital future of premium dining operations.</p>

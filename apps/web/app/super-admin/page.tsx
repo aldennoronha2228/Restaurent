@@ -12,7 +12,7 @@ import {
     Building2,
     TrendingUp, RefreshCw, X, Check
 } from 'lucide-react';
-import { getPlatformStats, getGlobalLogs, type PlatformStats, type GlobalLog } from '@/lib/firebase-super-admin-actions';
+import { getPlatformStats, getPlatformStatsSafe, getGlobalLogs, type PlatformStats, type GlobalLog } from '@/lib/firebase-super-admin-actions';
 import { cn } from '@/lib/utils';
 
 const geist = Geist({ subsets: ['latin'] });
@@ -141,24 +141,22 @@ export default function SuperAdminOverview() {
     const loadData = async () => {
         setLoadError(null);
         try {
-            const [statsResult, logsResult] = await Promise.allSettled([
-                getPlatformStats(),
-                getGlobalLogs(10),
-            ]);
+            // Use safe wrappers so we surface server-side errors exactly instead of
+            // the opaque Next.js client error (E394 / "An unexpected response...").
+            const statsResp = await getPlatformStatsSafe();
+            const logsResult = await getGlobalLogs(10).catch((e) => {
+                console.error('getGlobalLogs error:', e);
+                return [] as any[];
+            });
 
-            if (statsResult.status === 'fulfilled') {
-                setStats(statsResult.value);
+            if (statsResp && (statsResp as any).success) {
+                setStats((statsResp as any).data);
             } else {
                 setStats(null);
-                setLoadError((prev) => prev || (statsResult.reason?.message || 'Failed to load platform stats'));
+                setLoadError((prev) => prev || (statsResp as any).error || 'Failed to load platform stats');
             }
 
-            if (logsResult.status === 'fulfilled') {
-                setRecentLogs(logsResult.value);
-            } else {
-                setRecentLogs([]);
-                setLoadError((prev) => prev || (logsResult.reason?.message || 'Failed to load activity logs'));
-            }
+            setRecentLogs(Array.isArray(logsResult) ? logsResult : []);
         } catch (error) {
             console.error('Error loading super admin data:', error);
             setLoadError((error as any)?.message || 'Failed to load super admin data');

@@ -52,7 +52,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     // Use the ADMIN-specific auth context.
     // This watches the admin Firebase app.
     // Completely isolated from the tenant dashboard's Firebase app.
-    const { session, loading, roleLoading, signOut, userRole } = useSuperAdminAuth();
+    const { session, loading, roleLoading, signOut, userRole, error } = useSuperAdminAuth();
 
     const isSuperAdmin = userRole === 'super_admin';
 
@@ -84,13 +84,38 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     };
 
 
-    // Show spinner while auth is being resolved
+    // Show spinner while auth is being resolved. If there's an auth error,
+    // surface it so developers/users know why verification stalls.
     if (!isFullyLoaded) {
         return (
             <div className={cn("min-h-screen flex items-center justify-center bg-[#050505]", geist.className)}>
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-400 rounded-full animate-spin"></div>
                     <p className="text-slate-400 text-sm font-medium">Verifying super admin access...</p>
+                    {error && (
+                        <div className="mt-4 max-w-lg text-center text-xs text-rose-300 bg-rose-900/10 border border-rose-700/20 p-3 rounded">
+                            <div className="font-medium">Error resolving admin session</div>
+                            <div className="mt-1 break-words">{String(error).slice(0, 400)}</div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className={cn("min-h-screen flex items-center justify-center bg-[#050505] px-4", geist.className)}>
+                <div className="w-full max-w-lg rounded-2xl border border-rose-700/30 bg-rose-950/20 p-6 text-center">
+                    <p className="text-lg font-semibold text-rose-200">Super admin access could not be verified</p>
+                    <p className="mt-2 text-sm text-slate-300 break-words">{String(error).slice(0, 500)}</p>
+                    <button
+                        type="button"
+                        onClick={() => router.replace('/login')}
+                        className="mt-5 inline-flex items-center justify-center rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15"
+                    >
+                        Back to login
+                    </button>
                 </div>
             </div>
         );

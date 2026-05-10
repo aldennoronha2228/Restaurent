@@ -321,6 +321,19 @@ export async function getPlatformStats(): Promise<PlatformStats> {
     };
 }
 
+// Safe wrapper for client/server calls: returns structured result so client code
+// can display the underlying error message instead of the generic Next.js E394
+// message when server actions fail during fetch.
+export async function getPlatformStatsSafe(): Promise<{ success: true; data: PlatformStats } | { success: false; error: string }> {
+    try {
+        const data = await getPlatformStats();
+        return { success: true, data };
+    } catch (error: any) {
+        console.error('getPlatformStatsSafe error:', error);
+        return { success: false, error: String(error?.message || error) };
+    }
+}
+
 // ─── Get All Restaurants ─────────────────────────────────────────────────────
 
 export async function getAllRestaurants(

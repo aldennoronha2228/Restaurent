@@ -23,6 +23,7 @@ const SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const TENANT_SESSION_EXPIRES_AT_KEY = 'nexresto-tenant-session-expires-at';
 const TENANT_SESSION_UID_KEY = 'nexresto-tenant-session-uid';
 const PASSWORD_CHANGE_BYPASS_KEY = 'nexresto-password-change-bypass';
+const AUTH_RESOLVE_TIMEOUT_MS = 12000;
 
 type PasswordBypassState = {
     uid: string;
@@ -143,13 +144,29 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+        promise.then(
+            value => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            error => {
+                clearTimeout(timer);
+                reject(error);
+            },
+        );
+    });
+}
+
 async function getIdTokenWithRetry(user: User): Promise<string> {
     try {
-        return await user.getIdToken();
+        return await withTimeout(user.getIdToken(), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant session token');
     } catch (err) {
         if (!isAuthNetworkError(err)) throw err;
         await sleep(350);
-        return user.getIdToken();
+        return withTimeout(user.getIdToken(), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant session token retry');
     }
 }
 
@@ -198,7 +215,7 @@ async function fetchUserProfile(user: User): Promise<{
 } | null> {
     try {
         // [MOD] Force refresh to ensure we have the latest custom claims (e.g. after a reset script)
-        const tokenResult = await user.getIdTokenResult(true);
+        const tokenResult = await withTimeout(user.getIdTokenResult(true), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant token claims');
         const claims = tokenResult.claims;
 
         const role = (claims.role as string) || null;
@@ -223,10 +240,10 @@ async function fetchUserProfile(user: User): Promise<{
 
         if (!role || !tenantId) {
             // Fallback: try fetching profile from API
-            const idToken = await user.getIdToken();
-            const res = await fetch('/api/auth/profile', {
+            const idToken = await withTimeout(user.getIdToken(), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant profile token');
+            const res = await withTimeout(fetch('/api/auth/profile', {
                 headers: { Authorization: `Bearer ${idToken}` },
-            });
+            }), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant profile request');
 
             if (!res.ok) return null;
             const { profile } = await res.json();
@@ -254,7 +271,7 @@ async function fetchUserProfile(user: User): Promise<{
         // Get restaurant name from Firestore
         let tenantName = tenantId;
         try {
-            const restDoc = await getDoc(doc(db, 'restaurants', tenantId));
+            const restDoc = await withTimeout(getDoc(doc(db, 'restaurants', tenantId)), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant restaurant doc');
             if (restDoc.exists()) {
                 tenantName = restDoc.data().name || tenantId;
             }
@@ -268,7 +285,7 @@ async function fetchUserProfile(user: User): Promise<{
         let subscriptionEndDate: string | null = null;
         let subscriptionDaysRemaining: number | null = null;
         try {
-            const restDoc = await getDoc(doc(db, 'restaurants', tenantId));
+            const restDoc = await withTimeout(getDoc(doc(db, 'restaurants', tenantId)), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant subscription doc');
             if (restDoc.exists()) {
                 const data = restDoc.data();
                 subscriptionTier = data.subscription_tier || 'starter';
@@ -309,11 +326,11 @@ async function fetchUserProfileFromApi(user: User): Promise<{
     is_impersonating?: boolean;
 } | null> {
     try {
-        const idToken = await user.getIdToken(true);
-        const res = await fetch('/api/auth/profile', {
+        const idToken = await withTimeout(user.getIdToken(true), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant API profile token');
+        const res = await withTimeout(fetch('/api/auth/profile', {
             headers: { Authorization: `Bearer ${idToken}` },
             cache: 'no-store',
-        });
+        }), AUTH_RESOLVE_TIMEOUT_MS, 'Tenant API profile request');
 
         if (!res.ok) return null;
 
@@ -392,6 +409,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         let isActive = true;
+
+        const loadingSafetyTimer = setTimeout(() => {
+            if (isActive) {
+                setState(prev => {
+                    if (prev.loading) {
+                        console.warn('[AuthContext] Loading safety release.');
+                        return { ...prev, loading: false };
+                    }
+                    return prev;
+                });
+            }
+        }, 12000);
 
         // Safety release for tenantLoading - if it hangs for 5s, release it  
         const tenantSafetyTimer = setTimeout(() => {
@@ -567,6 +596,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             isActive = false;
             unsubscribe();
+            clearTimeout(loadingSafetyTimer);
             clearTimeout(tenantSafetyTimer);
         };
     }, []);

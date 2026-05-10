@@ -76,6 +76,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function serializeAuthError(err: unknown) {
+    // Handle native Error instances first
     if (err instanceof Error) {
         const withCode = err as Error & { code?: string };
         return {
@@ -85,14 +86,39 @@ function serializeAuthError(err: unknown) {
             stack: err.stack || null,
         };
     }
+    // If this is a DOM Event (e.g., AbortEvent) surface a clearer message
+    try {
+        if (typeof Event !== 'undefined' && err instanceof Event) {
+            const ev = err as Event & { type?: string };
+            return {
+                code: 'event',
+                message: ev.type ? `Unexpected event: ${ev.type}` : 'Unexpected browser event occurred',
+                name: 'Event',
+                raw: String(ev),
+            };
+        }
+    } catch (e) {
+        // Ignore instanceof checks failing in some environments
+    }
 
     if (typeof err === 'object' && err !== null) {
         const maybe = err as { code?: unknown; message?: unknown; name?: unknown };
+        let rawStr = null;
+        try {
+            rawStr = JSON.stringify(err);
+        } catch (e) {
+            try {
+                rawStr = String(err);
+            } catch (_) {
+                rawStr = '[unserializable object]';
+            }
+        }
+
         return {
             code: typeof maybe.code === 'string' ? maybe.code : 'unknown',
             message: typeof maybe.message === 'string' ? maybe.message : 'Authentication failed',
             name: typeof maybe.name === 'string' ? maybe.name : 'NonErrorObject',
-            raw: JSON.stringify(err),
+            raw: rawStr,
         };
     }
 
@@ -299,7 +325,15 @@ export default function LoginPage() {
                     }),
                 });
 
-                const data = await res.json();
+                const contentType = res.headers.get('content-type') || '';
+                let data: any = null;
+                if (contentType.includes('application/json')) {
+                    data = await res.json();
+                } else {
+                    const text = await res.text();
+                    // If server returned HTML (e.g. dev overlay), surface a friendly message
+                    throw new Error(text ? `Server error: ${text.slice(0, 200)}` : 'Server returned unexpected response');
+                }
                 if (!res.ok) throw new Error(data?.error || 'Failed to initialize signup');
 
                 setMode('verify-otp');
@@ -478,19 +512,27 @@ export default function LoginPage() {
         }
 
         setFormLoading(true); setError(null);
-        try {
-            const res = await fetch('/api/auth/signup-verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email,
-                    otp: enteredOtp,
-                    inviteToken,
-                    requestId: inviteRequestId,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'Verification failed');
+            try {
+                const res = await fetch('/api/auth/signup-verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email,
+                        otp: enteredOtp,
+                        inviteToken,
+                        requestId: inviteRequestId,
+                    }),
+                });
+
+                const contentType = res.headers.get('content-type') || '';
+                let data: any = null;
+                if (contentType.includes('application/json')) {
+                    data = await res.json();
+                } else {
+                    const text = await res.text();
+                    throw new Error(text ? `Server error: ${text.slice(0, 200)}` : 'Server returned unexpected response');
+                }
+                if (!res.ok) throw new Error(data?.error || 'Verification failed');
 
             setInfo('Account created successfully! You can now sign in.');
             setMode('signin');

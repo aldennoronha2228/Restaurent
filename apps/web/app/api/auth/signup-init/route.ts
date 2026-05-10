@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createHash } from 'crypto';
-import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { adminAuth, adminFirestore, isFirebaseAdminAvailable } from '@/lib/firebase-admin';
 import { sendOtpEmail } from '@/lib/email';
 
 async function hasRestaurantAccess(email: string): Promise<boolean> {
@@ -45,6 +45,10 @@ export async function POST(request: Request) {
         }
 
         const normalizedEmail = String(email).toLowerCase().trim();
+
+        if (!isFirebaseAdminAvailable()) {
+            return NextResponse.json({ error: 'Server misconfiguration: Firebase Admin SDK not initialized.' }, { status: 500 });
+        }
         const normalizedRequestId = String(requestId).trim();
         const token = String(inviteToken).trim();
 
