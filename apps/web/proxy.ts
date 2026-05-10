@@ -223,9 +223,9 @@ export const config = {
          * Match all request paths EXCEPT:
          * - _next/static (static files)
          * - _next/image  (image optimization)
-         * - favicon.ico, manifest.json, robots.txt, sitemap.xml
-         * - all public asset file extensions
+         * - metadata files
+         * - any path that clearly targets a file with an extension
          */
-        '/((?!_next/static|_next/image|favicon.ico|manifest.json|robots.txt|sitemap.xml|.*\\.(?:json|svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|xml|webmanifest)$).*)',
+        '/((?!_next/static|_next/image|favicon.ico|manifest.json|site.webmanifest|robots.txt|sitemap.xml|.*\\.[^/]+$).*)',
     ],
 };

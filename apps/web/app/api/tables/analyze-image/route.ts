@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
+import { fetchWithTimeout, HttpTimeoutError } from '@/lib/server/fetch-with-timeout';
 
 type VisionTable = {
     id: string;
@@ -16,6 +17,7 @@ type ProviderResult = {
 };
 
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
+const AI_HTTP_TIMEOUT_MS = 30000;
 
 function parseOpenAiModels(): string[] {
     const raw = process.env.OPENAI_VISION_MODEL_CANDIDATES || process.env.OPENAI_MODEL_CANDIDATES || process.env.OPENAI_MODEL || 'gpt-4o,gpt-4o-mini';
@@ -161,7 +163,7 @@ function buildVisionPrompt(hintTableCount: number): string {
 }
 
 async function requestOpenAiVisionPass(apiKey: string, model: string, dataUrl: string, prompt: string, passLabel: string): Promise<VisionTable[]> {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -185,7 +187,7 @@ async function requestOpenAiVisionPass(apiKey: string, model: string, dataUrl: s
                 },
             ],
         }),
-    });
+    }, AI_HTTP_TIMEOUT_MS);
 
     if (!response.ok) {
         const errText = await response.text();
@@ -236,7 +238,7 @@ async function analyzeWithGemini(apiKey: string, mimeType: string, base64Data: s
     let lastError = '';
 
     for (const model of GEMINI_MODELS) {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
             {
                 method: 'POST',
@@ -262,7 +264,8 @@ async function analyzeWithGemini(apiKey: string, mimeType: string, base64Data: s
                         },
                     ],
                 }),
-            }
+            },
+            AI_HTTP_TIMEOUT_MS,
         );
 
         if (!response.ok) {
@@ -300,6 +303,14 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        const contentType = String(request.headers.get('content-type') || '').toLowerCase();
+        if (!contentType.includes('multipart/form-data')) {
+            return NextResponse.json(
+                { error: 'Content-Type must be multipart/form-data' },
+                { status: 400 },
+            );
+        }
+
         const formData = await request.formData();
         const restaurantId = String(formData.get('restaurantId') || '').trim();
         const hintTableCount = Number(formData.get('hintTableCount') || 0);
@@ -346,6 +357,9 @@ export async function POST(request: NextRequest) {
             quality: 'strict',
         });
     } catch (error: unknown) {
+        if (error instanceof HttpTimeoutError) {
+            return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        }
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Image analysis failed' }, { status: 500 });
     }
 }

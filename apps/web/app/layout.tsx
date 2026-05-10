@@ -8,6 +8,7 @@ export const metadata: Metadata = {
         template: '%s | NexResto',
     },
     description: 'NexResto helps restaurants and hotels publish digital menus and streamline online ordering.',
+    manifest: '/site.webmanifest',
     icons: {
         icon: '/nexresto-mark.svg?v=20260415a',
         shortcut: '/nexresto-mark.svg?v=20260415a',
@@ -19,7 +20,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return (
         <html lang="en" suppressHydrationWarning>
             <head>
-                <link rel="manifest" href="/manifest.json" />
                 <link rel="icon" href="/nexresto-mark.svg" />
                 <link rel="apple-touch-icon" href="/apple-icon.png" />
             </head>

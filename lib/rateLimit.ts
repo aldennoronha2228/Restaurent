@@ -67,10 +67,14 @@ export function clearRateLimit(identifier: string, action: string): void {
 
 // Purge stale entries every 10 minutes to prevent memory leaks
 if (typeof setInterval !== 'undefined') {
-    setInterval(() => {
+    const cleanupTimer = setInterval(() => {
         const cutoff = Date.now() - 15 * 60 * 1000; // 15 min
         for (const [key, entry] of store.entries()) {
             if (entry.windowStart < cutoff) store.delete(key);
         }
     }, 10 * 60 * 1000);
+    // Avoid keeping the Node.js event loop alive in tests/short-lived processes.
+    if (typeof (cleanupTimer as NodeJS.Timeout).unref === 'function') {
+        cleanupTimer.unref();
+    }
 }

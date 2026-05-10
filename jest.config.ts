@@ -9,6 +9,12 @@ const config: Config = {
     preset: 'ts-jest',
     testEnvironment: 'node',
     testMatch: ['**/__tests__/**/*.test.ts'],
+    modulePathIgnorePatterns: [
+        '<rootDir>/.next/',
+        '<rootDir>/apps/web/.next/',
+        '<rootDir>/archive/',
+        '<rootDir>/NexResto  Restaurant &amp; Hotel Digital Menus-win32-x64/',
+    ],
     moduleNameMapper: {
         '^@/(.*)$': ['<rootDir>/$1', '<rootDir>/apps/web/$1'],
     },

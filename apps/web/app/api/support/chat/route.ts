@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminFirestore } from '@/lib/firebase-admin';
 import { authorizeTenantAccess } from '@/lib/server/authz/tenant';
 import { generateDailyReport } from '@/lib/reports';
+import { fetchWithTimeout, HttpTimeoutError } from '@/lib/server/fetch-with-timeout';
 
 type ChatMessage = {
     role: 'user' | 'assistant';
@@ -88,6 +89,7 @@ const MODEL_CANDIDATES = [
     'gemini-2.0-flash',
     'gemini-flash-latest',
 ];
+const AI_HTTP_TIMEOUT_MS = 30000;
 
 function resolveGroqChatCompletionsUrl(apiUrl?: string): string {
     const base = String(apiUrl || '').trim().replace(/\/+$/, '');
@@ -986,7 +988,7 @@ function normalizeAssistantReply(raw: string): string {
     const remaining = lines.map((line) => {
         if (/^([-*•]|\d+[.)])\s+/.test(line)) return line.replace(/^\d+[.)]\s+/, '- ');
         return line;
-    });
+    }, AI_HTTP_TIMEOUT_MS);
 
     return [intro, ...remaining].join('\n');
 }
@@ -1190,7 +1192,7 @@ const ACTION_PLANNER_PROMPT = [
 
 async function inferActionFromOpenAi(apiKey: string, model: string, latestUserMessage: string): Promise<ParsedAction> {
     const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1219,7 +1221,7 @@ async function inferActionFromOpenAi(apiKey: string, model: string, latestUserMe
 
 async function inferActionFromGemini(apiKey: string, latestUserMessage: string): Promise<ParsedAction> {
     for (const modelName of MODEL_CANDIDATES) {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
             `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
             {
                 method: 'POST',
@@ -1233,7 +1235,8 @@ async function inferActionFromGemini(apiKey: string, latestUserMessage: string):
                         responseMimeType: 'application/json',
                     },
                 }),
-            }
+            },
+            AI_HTTP_TIMEOUT_MS,
         );
 
         if (!response.ok) {
@@ -1262,7 +1265,7 @@ async function inferActionFromGroq(apiKeys: string[], latestUserMessage: string)
 
     for (const apiKey of apiKeys) {
         for (const modelName of resolveGroqModelCandidates()) {
-            const response = await fetch(endpoint, {
+            const response = await fetchWithTimeout(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1277,7 +1280,7 @@ async function inferActionFromGroq(apiKeys: string[], latestUserMessage: string)
                         { role: 'user', content: latestUserMessage.slice(0, 1500) },
                     ],
                 }),
-            });
+            }, AI_HTTP_TIMEOUT_MS);
 
             if (!response.ok) {
                 const details = await response.text();
@@ -1347,7 +1350,7 @@ async function inferActionFromAi(latestUserMessage: string, groqApiKeys: string[
 
 async function requestOpenAiReply(apiKey: string, model: string, messages: ChatMessage[], contextPrompt: string): Promise<ProviderReply> {
     const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1366,7 +1369,7 @@ async function requestOpenAiReply(apiKey: string, model: string, messages: ChatM
                 ...messages.map((m) => ({ role: m.role, content: m.content })),
             ],
         }),
-    });
+    }, AI_HTTP_TIMEOUT_MS);
 
     if (!response.ok) {
         const errorText = await response.text();
@@ -1375,7 +1378,7 @@ async function requestOpenAiReply(apiKey: string, model: string, messages: ChatM
                 statusCode: 429,
                 errorCode: 'quota_exceeded',
                 details: errorText.slice(0, 500),
-            });
+            }, AI_HTTP_TIMEOUT_MS);
         }
 
         throw Object.assign(new Error(`OpenAI request failed: ${response.status}`), {
@@ -1413,7 +1416,7 @@ async function requestGroqReply(apiKeys: string[], messages: ChatMessage[], cont
 
     for (const apiKey of apiKeys) {
         for (const modelName of resolveGroqModelCandidates()) {
-            const response = await fetch(endpoint, {
+            const response = await fetchWithTimeout(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1491,7 +1494,7 @@ async function requestGeminiReply(apiKey: string, messages: ChatMessage[], conte
     let lastErrorDetails = '';
 
     for (const modelName of MODEL_CANDIDATES) {
-        const candidateResponse = await fetch(
+        const candidateResponse = await fetchWithTimeout(
             `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
             {
                 method: 'POST',
@@ -1509,7 +1512,8 @@ async function requestGeminiReply(apiKey: string, messages: ChatMessage[], conte
                         maxOutputTokens: 420,
                     },
                 }),
-            }
+            },
+            AI_HTTP_TIMEOUT_MS,
         );
 
         if (candidateResponse.ok) {
@@ -1578,7 +1582,12 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-        const body = await request.json();
+        let body: any = null;
+        try {
+            body = await request.json();
+        } catch {
+            return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+        }
         const restaurantId = String(body?.restaurantId || '').trim();
         const auth = await requireAuthorizedRestaurant(request, restaurantId);
         if (auth instanceof NextResponse) return auth;
@@ -1730,3 +1739,4 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: error?.message || 'Support chat request failed.' }, { status: 500 });
     }
 }
+
