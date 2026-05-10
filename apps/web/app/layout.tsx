@@ -18,6 +18,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
         <html lang="en" suppressHydrationWarning>
+            <head>
+                <link rel="manifest" href="/manifest.json" />
+                <link rel="icon" href="/nexresto-mark.svg" />
+                <link rel="apple-touch-icon" href="/apple-icon.png" />
+            </head>
             <body>
                 <Providers>{children}</Providers>
             </body>

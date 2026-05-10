@@ -1,0 +1,20 @@
+{
+  "name": "NexResto",
+  "short_name": "NexResto",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#ff6500",
+  "icons": [
+    {
+      "src": "/nexresto-mark.svg",
+      "sizes": "256x256",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
