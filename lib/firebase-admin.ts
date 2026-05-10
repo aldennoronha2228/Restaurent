@@ -18,9 +18,18 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 let cachedAdminApp: App | null | undefined;
 let adminInitLogged = false;
 
+function resolveProjectId(): string {
+    return String(
+        process.env.FIREBASE_PROJECT_ID
+        || process.env.GOOGLE_CLOUD_PROJECT
+        || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        || '',
+    ).trim();
+}
+
 function hasAdminCredentials(): boolean {
     return Boolean(
-        process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID &&
+        resolveProjectId() &&
         process.env.FIREBASE_CLIENT_EMAIL &&
         process.env.FIREBASE_PRIVATE_KEY
     );
@@ -46,7 +55,7 @@ function getAdminApp(): App | null {
 
     // Build credentials from environment variables
     const serviceAccount = {
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+        projectId: resolveProjectId(),
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         // The private key may be stored with surrounding quotes and escaped newlines
         privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/^"|"$|^'|'$/g, '').replace(/\\n/g, '\n'),
@@ -55,7 +64,7 @@ function getAdminApp(): App | null {
     try {
         cachedAdminApp = initializeApp({
             credential: cert(serviceAccount),
-            projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+            projectId: resolveProjectId(),
         });
         if (!adminInitLogged) {
             adminInitLogged = true;

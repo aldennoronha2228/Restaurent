@@ -31,26 +31,31 @@ export async function authorizeTenantAccess(
     restaurantId: string,
     level: TenantAccessLevel = 'read'
 ): Promise<TenantAuthorization | null> {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    const user = await adminAuth.getUser(decoded.uid);
-    const claims = user.customClaims || {};
+    try {
+        const decoded = await adminAuth.verifyIdToken(idToken);
+        const user = await adminAuth.getUser(decoded.uid);
+        const claims = user.customClaims || {};
 
-    const role = normalizeRole(claims.role);
-    if (role === 'super_admin') {
-        return { uid: decoded.uid, role, isSuperAdmin: true };
+        const role = normalizeRole(claims.role);
+        if (role === 'super_admin') {
+            return { uid: decoded.uid, role, isSuperAdmin: true };
+        }
+
+        const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '').trim();
+        if (claimRestaurantId === restaurantId && isAllowedRole(role, level)) {
+            return { uid: decoded.uid, role, isSuperAdmin: false };
+        }
+
+        // Stale-claims fallback: check live staff role inside requested tenant.
+        const staffDoc = await adminFirestore.doc(`restaurants/${restaurantId}/staff/${decoded.uid}`).get();
+        const staffRole = normalizeRole(staffDoc.data()?.role);
+        if (staffDoc.exists && isAllowedRole(staffRole, level)) {
+            return { uid: decoded.uid, role: staffRole, isSuperAdmin: false };
+        }
+
+        return null;
+    } catch (error) {
+        console.warn('[authz] authorizeTenantAccess failed:', error instanceof Error ? error.message : error);
+        return null;
     }
-
-    const claimRestaurantId = String(claims.restaurant_id || claims.tenant_id || '').trim();
-    if (claimRestaurantId === restaurantId && isAllowedRole(role, level)) {
-        return { uid: decoded.uid, role, isSuperAdmin: false };
-    }
-
-    // Stale-claims fallback: check live staff role inside requested tenant.
-    const staffDoc = await adminFirestore.doc(`restaurants/${restaurantId}/staff/${decoded.uid}`).get();
-    const staffRole = normalizeRole(staffDoc.data()?.role);
-    if (staffDoc.exists && isAllowedRole(staffRole, level)) {
-        return { uid: decoded.uid, role: staffRole, isSuperAdmin: false };
-    }
-
-    return null;
 }

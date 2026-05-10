@@ -1,0 +1,7 @@
+[dotenv@17.3.1] injecting env (39) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+▲ Next.js 16.1.6
+- Local:         http://localhost:3110
+- Network:       http://192.168.1.37:3110
+
+✓ Starting...
+✓ Ready in 851ms
