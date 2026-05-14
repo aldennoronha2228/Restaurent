@@ -20,6 +20,10 @@ NexResto is a full-stack, multi-tenant platform for restaurants to run digital m
 
 It is built with a production-first architecture that separates app entrypoints, domain features, shared services, and infrastructure concerns.
 
+## Dashboard Preview
+
+![NexResto Live Orders Dashboard - Monitor active orders, table status, and restaurant operations](docs/images/dashboard-live-orders.png)
+
 ## The 4-Layer Product Flow
 
 | Layer | Purpose |
@@ -28,6 +32,127 @@ It is built with a production-first architecture that separates app entrypoints,
 | Operations | Orders, menu, inventory, analytics, and table-aware workflows for day-to-day management. |
 | Customer Experience | Branded customer menu, cart, order history, and live theme-aware storefront behavior. |
 | AI Assistance | Concierge and support assistants with Groq-first routing and fallback logic. |
+
+## Project Structure
+
+```
+Restaurant/
+├── apps/                         # Application entry points
+│   ├── api/                      # Standalone backend boundary (Node/Express)
+│   └── web/                      # Next.js App Router (UI + route handlers)
+│
+├── features/                     # Feature-first domain modules
+│   ├── auth/                     # Authentication flows (restaurant, super-admin)
+│   ├── cart/                     # Shopping cart functionality
+│   ├── menu/                     # Menu management and display
+│   └── orders/                   # Order processing and history
+│
+├── components/                   # Shared UI components
+│   ├── auth/                     # Authentication UI
+│   ├── customer/                 # Customer-facing components
+│   ├── dashboard/                # Admin dashboard components
+│   ├── pricing/                  # Pricing display components
+│   ├── seo/                      # SEO-related components
+│   ├── tenant/                   # Tenant-specific components
+│   └── ui/                       # Reusable UI primitives
+│
+├── services/                     # Service clients & external integrations
+│
+├── lib/                          # Shared runtime logic
+│   ├── server/                   # Server-only utilities
+│   ├── client/                   # Client-only utilities
+│   ├── seo/                      # SEO utilities
+│   ├── crypto.ts                 # Encryption/decryption
+│   ├── firebase.ts               # Firebase client SDK
+│   ├── firebase-admin.ts         # Firebase Admin SDK
+│   ├── firebase-api.ts           # Firebase API helpers
+│   ├── email.ts                  # Email service
+│   ├── logger.ts                 # Logging utilities
+│   ├── validate.ts               # Validation logic
+│   └── utils.ts                  # General utilities
+│
+├── context/                      # React Context providers
+│   ├── AuthContext.tsx           # Restaurant/staff authentication state
+│   ├── CartContext.tsx           # Shopping cart state
+│   └── SuperAdminAuthContext.tsx # Super-admin authentication state
+│
+├── hooks/                        # Custom React hooks
+│   └── useRestaurant.ts          # Restaurant context hook
+│
+├── config/                       # Runtime configuration
+│   └── env.ts                    # Environment variables
+│
+├── types/                        # TypeScript types & interfaces
+│
+├── database/                     # Schema & migrations
+│   ├── schema.md                 # Firestore schema documentation
+│   ├── migrations/               # Migration scripts
+│   └── README.md                 # Database setup guide
+│
+├── functions/                    # Firebase Cloud Functions
+│   ├── src/                      # Function source code
+│   ├── tsconfig.json             # TypeScript config
+│   └── package.json              # Function dependencies
+│
+├── desktop/                      # Windows desktop wrapper
+│   ├── main.js                   # Electron main process
+│   ├── preload.js                # Preload script
+│   ├── scripts/                  # Build scripts
+│   ├── assets/                   # Desktop assets
+│   └── README.md                 # Desktop build guide
+│
+├── scripts/                      # Operations & maintenance scripts
+│
+├── styles/                       # Global stylesheets
+│
+├── __tests__/                    # Automated test suites
+│   ├── menuTenantIsolationApi.test.ts
+│   ├── ordersTenantIsolationApi.test.ts
+│   ├── security.test.ts
+│   └── *.test.ts                 # Additional tests
+│
+├── docs/                         # Documentation
+│   ├── PROJECT_BRIEF.md          # Project overview
+│   ├── TENANT_ISOLATION_ARCHITECTURE.md
+│   ├── SECURITY.md               # Security guidelines
+│   ├── SECURE_BUILD_OBFUSCATION.md
+│   ├── architecture/             # Architecture diagrams
+│   └── notes/                    # Development notes
+│
+├── archive/                      # Archived artifacts
+│   └── debug-artifacts/          # Debug builds & logs
+│
+├── .env                          # Environment variables (local)
+├── .env.example                  # Environment template
+├── vite.config.ts                # Vite configuration
+├── vite.config.ts                # Vite configuration
+├── jest.config.ts                # Jest testing configuration
+├── tsconfig.json                 # TypeScript configuration
+├── eslint.config.mjs             # ESLint configuration
+├── firebase.json                 # Firebase project config
+├── firestore.rules               # Firestore security rules
+├── vercel.json                   # Vercel deployment config
+├── app.json                      # Expo/mobile config
+├── eas.json                      # EAS (Expo Application Services) config
+├── package.json                  # Root dependencies
+└── README.md                     # This file
+```
+
+### Key Directories Explained
+
+| Directory | Purpose |
+| --- | --- |
+| `apps/` | Separate entry points: web (Next.js) and API (backend boundary) |
+| `features/` | Domain modules organized by feature (auth, cart, menu, orders) |
+| `components/` | Reusable UI components shared across features |
+| `lib/` | Shared logic: Firebase, utilities, validation, logging |
+| `context/` & `hooks/` | React state management and reusable logic |
+| `database/` | Firestore schema, migrations, and setup documentation |
+| `functions/` | Firebase Cloud Functions for backend operations |
+| `desktop/` | Electron wrapper for Windows desktop auto-updates |
+| `scripts/` | Operational scripts for maintenance and deployment |
+| `__tests__/` | Test suites covering security, tenant isolation, and APIs |
+| `docs/` | Architecture docs, security guidelines, and development notes |
 
 ## Core Capabilities
 
